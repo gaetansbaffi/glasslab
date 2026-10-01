@@ -55,7 +55,7 @@ Après le premier chargement, le jeu fonctionne **hors ligne** (`sw.js`). Sur Gi
 
 - Chaque envoi sur `main` ou sur une branche `claude/…` lance les tests puis publie le jeu sur la branche `gh-pages` (`.github/workflows/pages.yml`, `tools/publier.sh`). Une version cassée n'est jamais publiée.
 - **Jamais de retour en arrière** : un envoi dont le commit est déjà en ligne, ou plus ancien que celui en ligne, ne republie rien (ex. création d'une branche sur un ancien commit).
-- **Republier un commit précis** (rare) : étiquette `publication-<n>` sur ce commit (`git tag publication-3 <commit> && git push origin publication-3`), ou « Run workflow » dans l'onglet Actions de GitHub.
+- **Republier sans nouveau code** (rare) : « Run workflow » dans l'onglet Actions de GitHub, ou une étiquette `publication-<n>` sur le commit voulu (`git tag publication-3 <commit> && git push origin publication-3`). Les deux demandent tes droits GitHub : l'accès de Claude Code ne peut ni lancer une action ni créer d'étiquette (refus 403) ; ses envois de code, eux, publient normalement.
 - La version publiée (commit et date) s'affiche **en bas de l'accueil**. Le service worker prend ce commit pour version : un téléphone reçoit la mise à jour au plus tard au deuxième rechargement (ou en rouvrant l'application installée).
 
 ## Lancer en local

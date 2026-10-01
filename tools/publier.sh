@@ -13,7 +13,7 @@
 # Règles :
 #   1. Jamais de retour en arrière : un envoi sur une branche dont le commit est déjà en ligne, ou plus
 #      ancien que celui en ligne, ne republie rien (ex. création de `main` sur un ancien commit).
-#      Une étiquette `publication-*` ou un lancement manuel republient toujours.
+#      Une étiquette `publication-*` ou un lancement manuel (« Run workflow ») republient toujours.
 #   2. La version du service worker devient le commit publié : chaque publication remplace le cache hors
 #      ligne des téléphones, sans dépendre d'une modification à la main de sw.js.
 #   3. publication.txt (commit, origine, date) est publié avec le site : l'accueil affiche la version.

@@ -109,7 +109,7 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 - **Pas de smash pour toi** : une balle au-dessus de 2 m se joue après le rebond.
 - **`src/core` alloue de petits objets à chaque pas** (états immuables, 4 joueurs) ; la génération d'une balle à la frappe adverse coûte ≈ 0,4 ms en médiane et jusqu'à ≈ 9 ms au pire sur PC (≈ 4 fois plus sur téléphone : une image sautée possible, rarement).
 - `rally.js` (duel d'origine) n'est plus utilisé par le jeu ; il est conservé car testé et réutilisé (motifs de perte).
-- **Publication** : chaque envoi publie après les tests ; une version plus ancienne que celle en ligne n'est jamais republiée (cas vécu : la création de `main` sur le commit d'import avait remis l'ancien jeu en ligne) ; une étiquette `publication-*` force une republication sans droit supplémentaire ; la version en ligne s'affiche en bas de l'accueil.
+- **Publication** : chaque envoi publie après les tests ; une version plus ancienne que celle en ligne n'est jamais republiée (cas vécu : la création de `main` sur le commit d'import avait remis l'ancien jeu en ligne) ; une republication sans nouveau code passe par « Run workflow » ou une étiquette `publication-*` (droits du propriétaire du dépôt : l'accès de Claude Code est refusé, 403) ; la version en ligne s'affiche en bas de l'accueil.
 
 ## 9. À tester à la main sur un vrai téléphone [à vérifier]
 
