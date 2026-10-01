@@ -1,6 +1,6 @@
 # Glass Lab — état des lieux après reconstruction
 
-> État au 1ᵉʳ octobre 2026, dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
+> État au 1ᵉʳ octobre 2026 (effets et système de points ajoutés), dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
 > Le brief de reconstruction précédent (état du dépôt `glassmaster`, branche `claude/confident-curie-9n5fu8-jeu`) est dans l'historique git : commit `03ca104`.
 > Statut des informations : **[fait]** vérifié dans le code ou par les tests · **[à vérifier]** non vérifiable sans un vrai téléphone ou un joueur · **[reco]** recommandation.
 
@@ -8,7 +8,7 @@
 
 ## 1. En une phrase
 
-Glass Lab est devenu une **partie de padel en double, sans fin, vécue en 1re personne dans le corps du joueur** : toi et ton partenaire IA contre deux adversaires IA, avec service, score et positions d'attaque et de défense. Ta balle garde la logique d'entraînement d'origine : tu te places, tu appuies sur **Frappe**, le jeu compare ton coup au meilleur coup possible.
+Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans le corps du joueur** : toi et ton partenaire IA contre deux adversaires IA, en 1 set ou en 2 sets gagnants, avec service, vrai score du padel, effets de balle et positions d'attaque et de défense. Ta balle garde la logique d'entraînement d'origine : tu te places, tu appuies sur **Frappe**, le jeu compare ton coup au meilleur coup possible.
 
 ## 2. Ce qui a été fait, étape par étape [fait]
 
@@ -18,8 +18,10 @@ Glass Lab est devenu une **partie de padel en double, sans fin, vécue en 1re pe
 | 1. 1re personne incarnée, mode unique | `19a2a37` | tête et corps séparés, corps complet, bras en cinématique inverse, 3 réglages, `main.js` découpé |
 | 2. Court complet, 4 joueurs | `b82ae30` | filet obstacle, vitres adverses, positions, qui prend la balle, IA (défense, lob, volée, etc.), option (b) |
 | 3. Service, score, coups avancés, calibrage | `d424d46` | service réel, score du padel, bandeja / víbora / smash / chiquita, test de calibrage |
+| 4. Effets de balle (demande après publication) | `4cafdb1` | coupé, lift, latéral en vol et aux rebonds ; effet par coup ; balle qui tourne ; étiquette et Détail |
+| 5. Vrai système de points (demande après publication) | `eff478a` | formats 1 set / 2 sets gagnants, super jeu décisif, fin de match, tableau de score, annonces, reprise |
 
-`node test/run.js` : **95 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
+`node test/run.js` : **109 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
 
 ## 3. Critères d'acceptation du brief (§9)
 
@@ -31,7 +33,7 @@ Glass Lab est devenu une **partie de padel en double, sans fin, vécue en 1re pe
 | Partie à 4 joueurs (§7) : animés, attaque / défense, attribution, service et score, vitesses du tableau | **[fait]** voir §5 et §6. |
 | 3 réglages au maximum | **[fait]** son et vibration, mode gaucher, données (test en navigateur : 2 interrupteurs + Données). |
 | Logique conservée et étendue, `src/core` pur, tests ajoutés (tête, corps, IK, déplacements, positions, attribution, service, score) | **[fait]** 45 des 50 tests d'origine conservés (2 adaptés au déplacement avec accélération) ; les 5 autres testaient la vue épaule, la caméra derrière le joueur, le déplacement relatif au regard et l'ancienne raquette, retirés avec ces fonctions et remplacés par les tests du corps ; 50 tests ajoutés. |
-| 60 i/s sur un téléphone milieu de gamme ; PWA hors ligne | **[à vérifier]** ≈ 25 appels de rendu et ≈ 7 000 triangles par image, résolution dynamique et ombres coupables automatiquement ; jamais mesuré sur un vrai téléphone. Service worker mis à jour (`glasslab-v4.3.0`). |
+| 60 i/s sur un téléphone milieu de gamme ; PWA hors ligne | **[à vérifier]** ≈ 25 appels de rendu et ≈ 7 000 triangles par image, résolution dynamique et ombres coupables automatiquement ; jamais mesuré sur un vrai téléphone. Service worker mis à jour (`glasslab-v4.5.0`). |
 
 ## 4. La 1re personne [fait sauf mention]
 
@@ -50,7 +52,22 @@ Glass Lab est devenu une **partie de padel en double, sans fin, vécue en 1re pe
 - **Joueurs** : accélération, freinage, réaction, split-step (`players.js`) ; ta course aussi (5 m/s, ≈ 0,5 s pour la pleine vitesse). L'atteignabilité des balles utilise ce modèle.
 - **Tactique** (`tactics.js`) : défense à 2,4 m de la vitre, attaque à 7,3 m ; partenaires alignés (le partenaire s'aligne sur toi si tu restes au fond) ; transitions sur lob profond et balle courte ; qui prend la balle (côté, centre, coup droit) ; interception des IA (y compris au-dessus de la tête) ; choix du coup ; fautes.
 - **Option (b) orientée entraînement** : 67 % des balles adverses vers toi sur 6 parties simulées (cible 65 %), en familles de vitres selon la répétition espacée ; stats et feedback sur tes coups, avec le contexte du double (alignement, ton côté) dans le message et le Détail.
-- **Service et score** (`score.js`, `match.js`) : service à la cuillère après rebond, derrière la ligne de service, en diagonale ; carré, faute, deuxième service, double faute, let, retour après le rebond ; 15-30-40-jeu, point en or (avantage dans `config.js`), jeux, jeu décisif, sets sans fin ; rotation du service.
+- **Service et score** (`score.js`, `match.js`) : service à la cuillère après rebond, derrière la ligne de service, en diagonale ; carré, faute, deuxième service, double faute, let, retour après le rebond ; 15-30-40-jeu, point en or (avantage dans `config.js`), jeux, jeu décisif ; rotation du service.
+
+### 5.1 Effets de balle [fait]
+
+- **Modèle** (`physics.js`) : la balle porte un vecteur rotation. En vol, effet Magnus figé sur chaque segment (le calcul reste exact et déterministe) ; aux contacts (sol, vitres), le frottement transforme une partie de la rotation en vitesse, dans la limite du frottement disponible. **Sans effet, la trajectoire est identique au bit près** à l'ancienne (vérifié sur la physique, la génération des coups et une partie complète, puis par un test).
+- **Effets mesurés** sur une balle type (même point de rebond, 1 s de vol) : hauteur maximale après la vitre de fond **0,65 m coupée**, 0,99 m sans effet, **1,54 m liftée** ; vitesse après le rebond 10,3 / 12,2 / 14,0 m/s ; latéral (150 rad/s) : 2,2 m/s de déviation au rebond.
+- **Effet de chaque coup** (`config.styles.*.spin`) : bandeja, volée, service coupés ; víbora coupée et latérale vers la grille ; lob lifté ; smash plat ou lifté ; fond de court et défense variés. Balles reçues sur 3 matchs simulés : **coupées 33 %, liftées 20 %, coupées latérales 6 %, sans effet marqué 41 %**.
+- **Lisibilité** : balle avec sa couture, qui tourne selon l'effet (rotation affichée ralentie à 12 %, au plus 22 rad/s, sinon illisible à 60 i/s) ; étiquette de 1,3 s sur la balle qui t'arrive ; ligne « Effet » dans le Détail (ce que l'effet change et quoi faire).
+- **Rythme inchangé** : ≈ 10 frappes et ≈ 23 s par point (30 s avant, sur un autre tirage) ; génération d'un coup au pire ≈ 7 ms sur PC.
+
+### 5.2 Vrai système de points [fait]
+
+- **Formats** (`score.js`) : **1 set** (6 jeux, jeu décisif à 6-6) ou **2 sets gagnants** avec, à 1 set partout, un **super jeu décisif** en 10 points (2 d'écart). Le match se termine : vainqueur, score par set, plus de service.
+- **Enjeux et annonces** : balle de break, de set, de match (pour vous / pour eux), point en or, jeu décisif ; annonce de l'arbitre après chaque point, **score du serveur en premier** (« 30-15 », « 15 partout », « 40 partout · point en or »), avec la raison du point ; « Jeu · vous », « Set · eux · 6-4 », « Jeu, set et match ».
+- **Interface** : tableau de score type télévision en haut à gauche ; accueil avec le format, « Reprendre » (match sauvegardé à chaque point, relu et validé au chargement) et « Nouveau match » ; écran de fin (victoire ou défaite, score par set, points, tes indicateurs) ; bilan des matchs dans Stats. Le compteur « série » quitte l'écran de jeu (il reste dans la pause et les stats).
+- **Durée mesurée** (joueur automatique qui laisse passer 1 balle sur 4, niveau 3) : **1 set en 15 à 27 min de jeu** (6-1, 4-6, 7-5). Au niveau 1, le jeu tourne à 75 % du temps réel : compter un tiers de plus. Un match en 2 sets gagnants équilibré devrait durer 30 à 50 min (estimation, non mesurée sur un match serré).
 
 ## 6. Calibrage (tableau du brief) [fait]
 
@@ -73,6 +90,9 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 
 - **Côté du joueur** : tu joues à droite (côté « drive »), ton partenaire à gauche ; au service, les serveurs changent de côté à chaque point comme dans le règlement, puis chacun regagne son côté.
 - **Point en or par défaut** (règle répandue), l'avantage est un simple réglage de `config.js` (pas d'écran : 3 réglages maximum).
+- **Format par défaut : 1 set** (15 à 27 min) ; le format 2 sets gagnants utilise le super jeu décisif au 3e set pour rester jouable sur téléphone. Le choix se fait sur l'accueil (ce n'est pas un réglage) et « Jouer » reste à 1 appui.
+- **Annonce dans la convention de l'arbitre** (score du serveur en premier) : réaliste, mais « 15-30 » peut surprendre quand c'est ton équipe qui mène ; le tableau de score reste par équipe.
+- **Effets** : valeurs plausibles (≈ 3 à 32 tours/s), non mesurées sur de vrais joueurs ; rotation affichée ralentie ; étiquette d'effet = aide d'entraînement (un vrai joueur lit l'effet sur le geste adverse).
 - **Replacement entre deux points** : court fondu au noir, les 4 joueurs sont replacés pour le service (plus confortable en 1re personne qu'un déplacement automatique de la caméra).
 - **Ton renvoi reste automatique** (lob, balle de fond ou volée selon la situation et ta qualité) : le brief entraîne la décision, pas le geste.
 - **Le partenaire est fiable** (≈ 2 fois moins de fautes que les adversaires) pour ne pas frustrer ; les adversaires peuvent gagner des points contre lui (≈ 15 % de ses balles ne sont pas forcément jouables).
@@ -80,7 +100,9 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 ## 8. Limites et dette connues [fait]
 
 - **Jamais testé sur un vrai téléphone** ; tests navigateur en Chromium sans affichage, rendu WebGL logiciel. Sur iOS, pas d'API plein écran dans Safari ni de vibration.
-- **Physique simplifiée** : pas d'effet ni de frottement de l'air ; le grillage renvoie comme une vitre ; murs infinis (pas de balle « por 3 » ou « por 4 »).
+- **Physique simplifiée** : effets avec Magnus figé par segment et frottement de contact simple ; pas de frottement de l'air ; le grillage renvoie comme une vitre ; murs infinis (pas de balle « por 3 » ou « por 4 »).
+- **Tu ne choisis pas l'effet ni la direction de ton renvoi** : ils suivent le coup choisi automatiquement.
+- **Pas de changement de côté** aux jeux impairs (court symétrique, tu restes en bas).
 - **Pas de contact raquette-balle** : la frappe est jugée sur la position et le moment d'appui.
 - **Heuristiques non calibrées avec des entraîneurs** : qualité, meilleur choix, choix des coups et fautes des IA.
 - **Déplacements par rapport au court** : quand tu regardes vers ta vitre, « haut » t'éloigne de ce que tu regardes. Le brief l'impose ; à surveiller dans les retours.
@@ -98,10 +120,13 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 6. Cadence : 60 i/s visés (`?debug=1`) ; que la résolution dynamique et la coupure des ombres suffisent.
 7. Partie : positions crédibles, annonces « À moi ! / À toi ! », ton service (invite, Frappe), score, jeu, set, fautes de service.
 8. Son, vibration, Wake Lock, pause automatique quand l'application passe en arrière-plan.
+9. **Effets** : l'étiquette (« Balle coupée »…) se lit sans gêner ; la rotation de la balle se voit quand elle approche ; une balle coupée reste basse après la vitre, une liftée sort haut (ressenti de joueur).
+10. **Score** : tableau lisible en plein jeu sur un petit écran ; annonces compréhensibles (« 15-30 » serveur d'abord) ; fin de match et écran de fin ; **Reprendre** après avoir fermé l'application (le match reprend au même score).
 
 ## 10. Suites possibles [reco]
 
 1. Tester sur 2 ou 3 téléphones (Android milieu de gamme, iPhone) et ajuster le confort (vitesse de tête, zone morte, fondu) et la cadence.
 2. Calibrer avec un entraîneur : poids de la qualité, meilleur choix, choix des coups et fautes des IA, part des balles vers toi.
-3. Effets (slice, lift) et grillage réaliste, avant d'enrichir les coups au-dessus de la tête.
-4. Donner au joueur le choix de la direction de son renvoi (gauche / centre / droite), si l'entraînement de la décision le justifie.
+3. Grillage réaliste et sorties « por 3 / por 4 », frottement de l'air ; valider les valeurs d'effet avec un joueur.
+4. Donner au joueur le choix de la direction et de l'effet de son renvoi (par exemple : glisser sur Frappe vers le haut = lift, vers le bas = coupé), si l'entraînement de la décision le justifie.
+5. Changement de côté aux jeux impairs (pause de 90 s raccourcie) et statistiques par match (aces, fautes directes, coups gagnants).

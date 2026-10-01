@@ -1,12 +1,12 @@
 # Glass Lab — padel en double, en 1re personne
 
-Un jeu de padel en **3D**, vécu **dans le corps du joueur**, pour entraîner la **lecture des vitres** et le **choix du coup**. Une vraie partie en double, sans fin : toi et ton partenaire (IA) contre deux adversaires (IA), avec service, score et positions d'attaque et de défense. Tu te places, tu appuies sur **Frappe** au bon moment, et le jeu compare ton coup au meilleur coup possible.
+Un jeu de padel en **3D**, vécu **dans le corps du joueur**, pour entraîner la **lecture des vitres** et le **choix du coup**. Un vrai match en double, en 1 set ou en 2 sets gagnants : toi et ton partenaire (IA) contre deux adversaires (IA), avec service, score du padel, effets de balle et positions d'attaque et de défense. Tu te places, tu appuies sur **Frappe** au bon moment, et le jeu compare ton coup au meilleur coup possible.
 
 Conçu **mobile d'abord** (plein écran, deux pouces, paysage conseillé), jouable au **clavier sur PC**. JavaScript sans bundler, Three.js en copie locale, PWA hors ligne.
 
 ## Jouer
 
-**Jouer** : la partie démarre, le premier service adverse arrive vers toi sans autre action.
+**Jouer** : le match démarre au format choisi sur l'accueil (**1 set** ou **2 sets gagnants**), le premier service adverse arrive vers toi sans autre action. Le match est sauvegardé à chaque point : si tu quittes, **Reprendre** le continue au même score ; **Nouveau match** l'abandonne.
 
 | Action | Mobile | PC |
 |---|---|---|
@@ -33,7 +33,9 @@ Conçu **mobile d'abord** (plein écran, deux pouces, paysage conseillé), jouab
 - **Positions** : chaque équipe est en **défense** (au fond, près des vitres) ou en **attaque** (au filet) ; les partenaires restent alignés, couvrent chacun leur côté et glissent ensemble vers la balle. On monte au filet derrière un lob profond ou une balle courte, on recule sur un lob très profond.
 - **Qui prend la balle** : celui de son côté ; au centre, le mieux placé, et à égalité celui dont le coup droit est au centre. Ton partenaire annonce « À moi ! » ou « À toi ! » sur les balles au centre. Toi, tu joues le côté droit.
 - **Coups des IA** : défense après vitre, balle de fond, lob (5 à 8 m de haut), chiquita, volée, bandeja, víbora, smash (au filet). Le coup dépend de leur position et de la balle reçue ; elles se trompent plus souvent sur une balle difficile.
-- **Service et score réels** : service à la cuillère après un rebond, derrière la ligne de service, en diagonale, dans le carré (sinon faute, deuxième service, double faute ; filet puis carré = let) ; retour obligatoirement après le rebond. 15-30-40-jeu avec **point en or** à 40-40 (l'avantage est disponible dans `config.js`), jeux à 6 avec 2 d'écart, jeu décisif à 6-6. La partie ne s'arrête jamais : un nouveau set commence à la fin du précédent.
+- **Service réel** : à la cuillère après un rebond, derrière la ligne de service, en diagonale, dans le carré (sinon faute, deuxième service, double faute ; filet puis carré = let) ; retour obligatoirement après le rebond.
+- **Vrai système de points** : 15-30-40-jeu avec **point en or** à 40-40 (l'avantage est disponible dans `config.js`), jeux à 6 avec 2 d'écart, jeu décisif en 7 points à 6-6. Match en **1 set**, ou en **2 sets gagnants** avec, à 1 set partout, un **super jeu décisif** en 10 points (format courant des tournois amateurs). Tableau de score type télévision (sets, jeux, points, équipe au service, enjeu : balle de break, de set, de match) ; après chaque point, l'annonce de l'arbitre, score du serveur en premier (« 30-15 », « 40 partout · point en or »), avec la raison du point ; « Jeu », « Set », « Jeu, set et match » ; écran de fin de match (victoire ou défaite, score par set, tes indicateurs).
+- **Effets de balle** : les coups ont de l'effet — bandeja, volée et service **coupés**, víbora **coupée et latérale** vers la grille, lob **lifté**, smash plat ou lifté. En vol, le lift plonge, le coupé flotte, le latéral courbe ; au rebond, le coupé freine et **sort bas de la vitre**, le lift accélère et **sort haut**, le latéral dévie. La balle porte sa couture et tourne selon son effet (rotation ralentie pour rester lisible) ; une étiquette brève annonce l'effet de la balle qui t'arrive (« Balle coupée », « Balle liftée », « Effet latéral »), et le Détail explique ce qu'il change pour toi.
 - **Partie orientée entraînement** : les adversaires visent ton côté ≈ 65 % du temps, avec des balles qui t'obligent à lire les vitres ; les familles de balles où tu échoues reviennent plus souvent (répétition espacée). Les stats et le feedback ne portent que sur tes coups.
 - **Difficulté adaptative** : au-delà de 80 % de balles renvoyées sur 10, le niveau monte (balles plus rapides, adversaires plus solides) ; sous 50 %, il descend. Le niveau règle aussi la vitesse du jeu : le niveau 1 démarre à 75 % du temps réel.
 
@@ -70,7 +72,7 @@ Un serveur HTTP est nécessaire (modules ES, service worker). Sur un téléphone
 node test/run.js
 ```
 
-Node ≥ 18, sans librairie : **95 tests**. Ils couvrent la physique (demi-court historique et court complet : aucune traversée des parois ni du filet, symétrie, filet et bande), le corps (cou limité à ±80°, pivot du corps, yeux, cinématique inverse, main sur la raquette, garde visible, geste jamais devant les yeux, **balle visible au contact sur 109 frappes simulées**), les déplacements (accélération, freinage, réaction, split-step), la qualité et le meilleur choix, la génération des balles (familles, styles, vitesses), l'échange historique, la tactique (positions, transitions, qui prend la balle, interception, choix du coup, fautes, ton renvoi), le score et le service, la partie à 4 (déterminisme, 1 appui, part des balles vers toi, IA à temps et légales, continuité de la balle, **calibrage sur le tableau du brief**), les stats, la migration de la sauvegarde et la **pureté de `src/core`** (ni DOM ni Three.js).
+Node ≥ 18, sans librairie : **109 tests**. Ils couvrent la physique (demi-court historique et court complet : aucune traversée des parois ni du filet, symétrie, filet et bande), les effets (effet nul = trajectoire identique, lift / coupé / latéral en vol, au rebond et à la vitre, lancer qui compense l'effet, effet de chaque coup), le corps (cou limité à ±80°, pivot du corps, yeux, cinématique inverse, main sur la raquette, garde visible, geste jamais devant les yeux, **balle visible au contact sur 109 frappes simulées**), les déplacements (accélération, freinage, réaction, split-step), la qualité et le meilleur choix, la génération des balles (familles, styles, vitesses), l'échange historique, la tactique (positions, transitions, qui prend la balle, interception, choix du coup, fautes, ton renvoi), le score et le service (formats de match, super jeu décisif, enjeux, annonces, reprise), la partie à 4 (fin de match, reprise) (déterminisme, 1 appui, part des balles vers toi, IA à temps et légales, continuité de la balle, **calibrage sur le tableau du brief**), les stats, la migration de la sauvegarde et la **pureté de `src/core`** (ni DOM ni Three.js).
 
 ## Architecture
 
@@ -83,7 +85,7 @@ src/app/                  session de jeu (pas fixe 120 Hz + interpolation), anim
 src/view/                 rendu Three.js : court, joueurs instanciés et ombres, balle et aides
 src/input.js, hud.js, audio.js, settings.js, storage.js
 src/core/                 fonctions pures, sans DOM ni Three.js, testées :
-  physics.js              rebonds exacts ; demi-court historique ou court complet (filet obstacle)
+  physics.js              rebonds exacts, effets (Magnus, frottement aux contacts) ; demi-court ou court complet
   flight.js               vol de balle depuis n'importe quel joueur, issue, balle vue par le receveur
   geometry.js             repères, joystick, clavier, champ de vision
   body.js                 tête et corps, yeux, cinématique inverse, raquette, squelette
@@ -91,10 +93,10 @@ src/core/                 fonctions pures, sans DOM ni Three.js, testées :
   quality.js              type de coup, qualité, meilleur choix, contexte du double, textes
   shotgen.js              balles d'entraînement (familles) et coups de tout style vers toute zone
   tactics.js              positions, transitions, qui prend la balle, interception et coups des IA
-  score.js                score du padel, rotation du service
+  score.js                score du padel, formats de match, enjeux, annonces, rotation du service
   match.js                partie à 4 joueurs (service, échange, points)
   rally.js                échange historique en duel (conservé, testé)
-  stats.js                sauvegarde v3, migration, stats, répétition espacée, difficulté
+  stats.js                sauvegarde v3 (dont format et match en cours), migration, stats, difficulté
   config.js               toutes les constantes
 test/                     tests Node (node test/run.js)
 tools/make-icons.js       génère les icônes PWA
@@ -113,6 +115,9 @@ tools/make-icons.js       génère les icônes PWA
 | `strike.timingTolerance` | ±0,25 s | fenêtre de frappe |
 | `zones.*`, `quality.*`, `placement.*` | voir fichier | zones de frappe, poids de la qualité, placement idéal |
 | `styles.*` | voir fichier | coups des 4 joueurs : hauteur au filet ou vitesse, profondeur, km/h admis, hauteur max |
+| `styles.*.spin` | ex. bandeja −200 à −90 rad/s | effet de chaque coup : lift (> 0) ou coupé (< 0), latéral |
+| `physics.DEFAULT_PARAMS` (`magnus`, `spin*`) | 0,0011 · frottement 0,5 sol / 0,25 vitre | force de l'effet en vol et aux contacts |
+| `serveFaults` | 8 % · 3,5 % | fautes des serveurs IA (premier, deuxième service) |
 | `tactics.*` | défense 2,4 m, attaque 7,3 m | positions, écart des partenaires, balle au centre |
 | `training.userShare` | 0,65 | part des balles adverses vers toi |
 | `errors.*` | voir fichier | fautes des IA selon la difficulté de la balle et le coup |
@@ -123,11 +128,12 @@ tools/make-icons.js       génère les icônes PWA
 ## Limites connues
 
 - **Jamais testé sur un vrai téléphone** : seulement en Chromium sans affichage, avec un rendu WebGL logiciel (≈ 20 à 50 i/s, non représentatif). Fluidité, ressenti du joystick, confort de la 1re personne (nausée), plein écran, verrouillage paysage, vibration et son restent à vérifier.
-- **Pas d'effet ni de frottement de l'air** : ni slice, ni lift, ni bandeja ou víbora « coupées » qui restent basses après la vitre ; le grillage renvoie la balle comme une vitre, et la balle ne sort jamais du court (pas de smash « por 3 » ou « por 4 »).
+- **Effets simplifiés** : l'effet Magnus est figé sur chaque segment de vol (le calcul reste exact), le frottement aux contacts suit un modèle de glissement simple ; les valeurs (tours / s, frottements) sont plausibles, pas mesurées. Pas de frottement de l'air ; le grillage renvoie la balle comme une vitre, et la balle ne sort jamais du court (pas de smash « por 3 » ou « por 4 »).
+- **Tu ne choisis pas l'effet de ton renvoi** : il suit le coup joué automatiquement (lob lifté, volée coupée…).
 - **La frappe n'est pas un contact raquette-balle** : elle est jugée sur ta position et le moment d'appui ; la raquette dessinée est un indicateur de portée.
 - **Tu ne choisis ni la direction ni le type de ton renvoi** : il est automatique (lob, balle de fond ou volée selon la situation et ta qualité). Tu n'as pas de smash : une balle trop haute se joue après le rebond.
 - **Heuristiques non calibrées avec des entraîneurs** : qualité, meilleur choix, choix des coups et fautes des IA, part des balles vers toi. Les vitesses sont des ordres de grandeur, vérifiés par un test.
 - **Déplacements par rapport au court** : quand tu regardes vers ta vitre de fond, pousser le joystick vers le haut t'éloigne de ce que tu regardes (c'est voulu, mais peut dérouter).
-- **Ton service** est toujours bon et en diagonale ; le score ne change pas de côté de terrain (tu restes en bas).
+- **Ton service** est toujours bon et en diagonale ; on ne change pas de côté aux jeux impairs (tu restes en bas, le court est symétrique).
 - Les IA ne se gênent pas physiquement et ne communiquent que sur les balles au centre ; le partenaire s'aligne sur toi si tu restes au fond.
 - La génération d'une balle se fait au moment de la frappe adverse (≈ 0,4 ms en médiane, jusqu'à ≈ 9 ms au pire sur PC).
