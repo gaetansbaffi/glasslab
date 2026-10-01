@@ -21,7 +21,7 @@
   </script>
 </head>
 <body>
-  <canvas id="game" aria-label="Court de padel en 3D, vue première personne"></canvas>
+  <canvas id="game" aria-label="Court de padel en 3D, vue à la première personne, dans le corps du joueur"></canvas>
 
   <!-- Interface de jeu : uniquement la série, Pause, le joystick, Frappe et le toast -->
   <div id="ui" class="ui" hidden>
@@ -38,6 +38,7 @@
     </div>
     <div id="guide" class="guide" hidden role="note"></div>
     <div id="hint" class="hint" hidden>Astuce : tourne ton téléphone en paysage pour mieux voir le court.</div>
+    <div id="level" class="level" hidden role="status" aria-live="polite"></div>
   </div>
   <div id="fps" class="fps" hidden></div>
 
@@ -81,6 +82,7 @@
       <h2 id="settingsTitle">Réglages</h2>
       <div id="settingsList" class="settings-list"></div>
       <h3>Données</h3>
+      <p class="small">Vue, champ de vision, vitesse et aides sont réglés par le jeu ; la difficulté s’adapte à toi.</p>
       <div class="menu-row">
         <button class="btn" id="exportBtn">Exporter (JSON)</button>
         <label class="btn" for="importFile">Importer…</label>

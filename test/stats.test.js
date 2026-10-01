@@ -83,6 +83,27 @@ test('migration : version 1 (application multi-modes) → version 2, données in
   assert(!('attempts' in s) && !('reveal' in s.settings) && !('view' in s.settings), 'données des modes retirés abandonnées');
 });
 
+test('migration : version 2 (duel) → version 3, réglages supprimés abandonnés, bilan des parties initialisé', () => {
+  const v2 = {
+    version: 2,
+    level: 3,
+    levelSince: 1,
+    bestStreak: 9,
+    guideDone: true,
+    settings: { speed: 0.5, camera: 'shoulder', fov: 110, sound: false, lefty: true, vibration: false },
+    balls: [ball({ ts: 7 }), ball({ ts: 8, family: 'A' }), { cassé: true }],
+  };
+  const r = Stats.migrate(v2, { sound: true, lefty: false });
+  assert(r.from === 2 && r.state.version === 3 && Stats.SCHEMA_VERSION === 3);
+  const s = r.state;
+  assert(s.level === 3 && s.bestStreak === 9 && s.guideDone && s.balls.length === 2, 'progression conservée');
+  assert(JSON.stringify(s.settings) === JSON.stringify({ sound: false, lefty: true }), 'réglages : ' + JSON.stringify(s.settings));
+  assert(JSON.stringify(s.record) === JSON.stringify(Stats.emptyRecord()), 'bilan vierge');
+  // Bilan d'une version 3 relu, valeurs invalides remises à zéro
+  const v3 = Stats.migrate({ version: 3, record: { points: [12, 'x'], games: [3, -2], sets: 'non' } }, { sound: true }).state;
+  assert(JSON.stringify(v3.record) === JSON.stringify({ points: [12, 0], games: [3, 0], sets: [0, 0] }), JSON.stringify(v3.record));
+});
+
 test('migration : données corrompues ou inconnues → état vierge, sans exception', () => {
   for (const raw of [null, undefined, 42, 'texte', [], {}, { version: 99 }, { version: 2, balls: 'pas un tableau', level: 'x' }, { version: 1, match: null }]) {
     const r = Stats.migrate(raw, DEFAULTS);

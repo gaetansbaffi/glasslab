@@ -1,6 +1,7 @@
 /*
- * Glass Lab — interface superposée : HUD minimal, écrans (accueil, pause, réglages, stats) et détail.
+ * Glass Lab — interface superposée : HUD minimal, écrans (accueil, pause, réglages, stats) et Détail.
  * Aucun panneau ni texte permanent pendant le jeu : série, Pause, joystick, Frappe et toast.
+ * Réglages : son et vibration, mode gaucher, données (3 au total).
  */
 import Q from './core/quality.js';
 import SG from './core/shotgen.js';
@@ -113,7 +114,7 @@ export function createHud() {
     guideHide(guide.step);
   });
 
-  /* ----- Réglages ----- */
+  /* ----- Réglages : deux interrupteurs (la section Données est fixe dans le HTML) ----- */
 
   function renderSettings(settings, onChange) {
     const list = $('settingsList');
@@ -123,48 +124,26 @@ export function createHud() {
       row.className = 'setting';
       const id = 'set-' + def.key;
       row.innerHTML = `<label class="lbl" for="${id}">${def.label}${def.hint ? `<small>${def.hint}</small>` : ''}</label>`;
-      if (def.type === 'toggle') {
-        const sw = document.createElement('span');
-        sw.className = 'switch';
-        sw.innerHTML = `<input type="checkbox" role="switch" id="${id}"><span></span>`;
-        const input = sw.firstChild;
-        input.checked = !!settings[def.key];
-        input.addEventListener('change', () => onChange(def.key, input.checked));
-        row.append(sw);
-      } else if (def.type === 'choice') {
-        const box = document.createElement('div');
-        box.className = 'choice';
-        box.setAttribute('role', 'group');
-        box.id = id;
-        for (const [value, label] of def.options) {
-          const b = document.createElement('button');
-          b.textContent = label;
-          b.setAttribute('aria-pressed', String(settings[def.key] === value));
-          b.addEventListener('click', () => {
-            box.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-            onChange(def.key, value);
-          });
-          box.append(b);
-        }
-        row.append(box);
-      } else if (def.type === 'range') {
-        const wrap = document.createElement('span');
-        wrap.className = 'range';
-        const r = document.createElement('input');
-        Object.assign(r, { type: 'range', id, min: def.min, max: def.max, step: def.step, value: settings[def.key] });
-        const out = document.createElement('output');
-        out.htmlFor = id;
-        const show = () => (out.textContent = String(r.value).replace('.', ',') + (def.unit || ''));
-        show();
-        r.addEventListener('input', () => {
-          show();
-          onChange(def.key, Number(r.value));
-        });
-        wrap.append(r, out);
-        row.append(wrap);
-      }
+      const sw = document.createElement('span');
+      sw.className = 'switch';
+      sw.innerHTML = `<input type="checkbox" role="switch" id="${id}"><span></span>`;
+      const input = sw.firstChild;
+      input.checked = !!settings[def.key];
+      input.addEventListener('change', () => onChange(def.key, input.checked));
+      row.append(sw);
       list.append(row);
     }
+  }
+
+  /* ----- Niveau : annonce discrète quand la difficulté adaptative change ----- */
+
+  let levelTimer = 0;
+  function levelChange(level, delta) {
+    const el = $('level');
+    el.textContent = `Niveau ${level} ${delta > 0 ? '↑' : '↓'}`;
+    el.hidden = false;
+    clearTimeout(levelTimer);
+    levelTimer = setTimeout(() => (el.hidden = true), 2200);
   }
 
   /* ----- Stats (minimalistes) ----- */
@@ -230,6 +209,7 @@ export function createHud() {
       return guide.step;
     },
     renderSettings,
+    levelChange,
     renderStats,
     renderSummary,
     renderDetail,

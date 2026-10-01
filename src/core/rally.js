@@ -15,6 +15,7 @@ import P from './physics.js';
 import G from './geometry.js';
 import Q from './quality.js';
 import SG from './shotgen.js';
+import PL from './players.js';
 import DEFAULT_CONFIG from './config.js';
 
 const MISS_REASONS = {
@@ -42,7 +43,7 @@ function createRally(o) {
     index: 0,
     phase: 'incoming',
     t: 0,
-    player: Object.assign({}, o.player || cfg.player.start),
+    player: Object.assign({ vx: 0, vy: 0 }, o.player || cfg.player.start),
     spawnPlayer: null,
     shot: null,
     pending: null,
@@ -267,16 +268,17 @@ function press(s, tp) {
   else finishMiss(s, 'far');
 }
 
+/**
+ * Déplacement du joueur : vitesse voulue = joystick × vitesse max, atteinte avec une accélération
+ * bornée (players.js). Pendant une frappe en attente, le joueur est planté sur ses appuis.
+ */
 function movePlayer(s, move, dt) {
-  if (!move || (!move.x && !move.y) || s.pending) return;
-  const l = Math.hypot(move.x, move.y);
-  const k = l > 1 ? 1 / l : 1;
-  const B = s.cfg.player.bounds;
-  const step = s.cfg.player.speed * dt * k;
-  s.player = {
-    x: Math.max(B.xMin, Math.min(B.xMax, s.player.x + move.x * step)),
-    y: Math.max(B.yMin, Math.min(B.yMax, s.player.y + move.y * step)),
-  };
+  const pc = s.cfg.player;
+  if (s.pending) {
+    if (s.player.vx || s.player.vy) s.player = Object.assign({}, s.player, { vx: 0, vy: 0 });
+    return;
+  }
+  s.player = PL.stepVelocity(s.player, PL.inputVelocity(move, pc), dt, pc, pc.bounds);
 }
 
 /**

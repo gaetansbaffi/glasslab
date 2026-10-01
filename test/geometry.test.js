@@ -60,14 +60,6 @@ test('angles de regard : aller-retour et lissage par le plus court chemin', () =
   near(G.wrapAngle(0.5 - 4 * Math.PI), 0.5, 1e-12);
 });
 
-test('caméra à hauteur d’yeux derrière le joueur, jamais derrière la vitre', () => {
-  const e = G.eyePosition({ x: 5, y: 3 }, 0);
-  near(e.z, 1.7, 0);
-  near(e.y, 3 - 0.35, 1e-12);
-  const glass = G.eyePosition({ x: 5, y: 0.3 }, 0, 1.7, 1);
-  assert(glass.y >= 0.15, 'reste devant la vitre de fond');
-});
-
 test('balle côté adverse : la remontée dans le temps reste sur la trajectoire et au-dessus du sol', () => {
   for (const f of SG.FAMILY_IDS) {
     for (const seed of SEEDS.slice(0, 15)) {
@@ -127,16 +119,6 @@ test('clavier : ZQSD (AZERTY) = WASD (QWERTY) = flèches, diagonale normalisée'
   assert(none.x === 0 && none.y === 0, 'touches opposées');
 });
 
-test('déplacement relatif au regard', () => {
-  const f = G.cameraRelativeMove({ x: 0, y: 1 }, 0);
-  near(f.x, 0, 1e-12);
-  near(f.y, 1, 1e-12, 'regard vers le filet : avancer = vers le filet');
-  const r = G.cameraRelativeMove({ x: 1, y: 0 }, 0);
-  near(r.x, 1, 1e-12, 'pas chassé à droite');
-  const b = G.cameraRelativeMove({ x: 0, y: 1 }, Math.PI);
-  near(b.y, -1, 1e-12, 'regard vers la vitre : avancer = vers la vitre');
-});
-
 test('caméra : suit la cible en douceur, amplitude et vitesse bornées, horizon stable', () => {
   const opts = { halfLife: 0.15, maxYaw: 2.4, pitchMin: -0.5, pitchMax: 0.6, maxSpeed: 3 };
   let look = { yaw: 0, pitch: 0 };
@@ -171,49 +153,27 @@ test('caméra calme : zone morte en lacet, suivi partiel de la hauteur', () => {
   near(G.cameraTarget(look, { yaw: 0, pitch: 0.45 }, opts).pitch, 0.15, 1e-12);
 });
 
-test('position de caméra : 1re personne aux yeux, vue épaule derrière et au-dessus, toujours dans le court', () => {
-  const p = { x: 5, y: 3 };
-  const look = { yaw: 0, pitch: -0.1 };
-  const fp = G.cameraRig(p, look, 'fp');
-  near(fp.pz, 1.7, 1e-12);
-  near(fp.py, 3 - 0.35, 1e-12);
-  const sh = G.cameraRig(p, look, 'shoulder');
-  assert(sh.py < fp.py - 1 && sh.pz > 2, 'épaule : en arrière et au-dessus');
-  // La visée suit le regard
-  const d = { x: sh.tx - sh.px, y: sh.ty - sh.py, z: sh.tz - sh.pz };
-  const a = G.lookAngles({ x: 0, y: 0, z: 0 }, d);
-  near(a.yaw, 0, 1e-12);
-  near(a.pitch, -0.1, 1e-12);
-  // Joueur collé à la vitre de fond ou dans un coin : la caméra reste dans le court
-  const rng = P.mulberry32(8);
-  for (let i = 0; i < 300; i++) {
-    const c = G.cameraRig({ x: 0.3 + rng() * 9.4, y: 0.3 + rng() * 9.2 }, { yaw: (rng() - 0.5) * 6, pitch: -0.2 }, rng() < 0.5 ? 'fp' : 'shoulder');
-    assert(c.px >= 0.2 && c.px <= 9.8 && c.py >= 0.2 && c.py <= 19.8, 'caméra hors du court');
-  }
-});
-
-test('raquette : tête à distance de bras du côté de la balle, geste de l’arrière vers l’avant', () => {
-  const p = { x: 5, y: 3 };
-  for (const yaw of [0, 1, Math.PI, -2]) {
-    for (const side of [1, -1]) {
-      const r = G.racketPose(p, yaw, side, 0);
-      near(Math.hypot(r.head.x - p.x, r.head.y - p.y), Math.hypot(0.65, 0.2), 1e-9, 'distance de bras');
-      // Côté : produit vectoriel regard × (tête − joueur) du signe attendu
-      const lateral = (r.head.x - p.x) * Math.cos(yaw) - (r.head.y - p.y) * Math.sin(yaw);
-      assert(Math.sign(lateral) === side, 'mauvais côté');
-      assert(r.head.z > 0.8 && r.head.z < 1.3 && r.shoulder.z > r.hand.z, 'hauteurs plausibles');
-    }
-  }
-  // Pendant la frappe, la tête passe de derrière à devant le joueur (regard vers le filet)
-  const back = G.racketPose(p, 0, 1, 0.01).head.y - p.y;
-  const front = G.racketPose(p, 0, 1, 1).head.y - p.y;
-  assert(back < 0 && front > 0.5, `geste : ${back} → ${front}`);
-});
-
-test('coup droit / revers : côté de la balle avec hystérésis', () => {
-  const p = { x: 5, y: 3 };
-  assert(G.pickSide(1, p, 0, { x: 4, y: 5 }) === -1, 'balle à gauche → revers');
-  assert(G.pickSide(-1, p, 0, { x: 6, y: 5 }) === 1, 'balle à droite → coup droit');
-  assert(G.pickSide(1, p, 0, { x: 4.9, y: 5 }) === 1, 'balle presque en face : on garde le côté');
-  assert(G.pickSide(-1, p, Math.PI, { x: 4, y: 1 }) === 1, 'regard vers la vitre : gauche et droite inversées');
+test('champ de vision d’une caméra : coordonnées caméra et visibilité d’un point', () => {
+  const eye = { x: 5, y: 3, z: 1.65 };
+  // Point droit devant : centré, à la bonne profondeur
+  const c = G.viewCoords(eye, 0, 0, { x: 5, y: 8, z: 1.65 });
+  near(c.x, 0, 1e-12);
+  near(c.y, 0, 1e-12);
+  near(c.z, 5, 1e-12);
+  // À droite et en haut de l'image
+  const r = G.viewCoords(eye, 0, 0, { x: 6, y: 8, z: 2.65 });
+  assert(r.x > 0 && r.y > 0);
+  // Regard vers la droite (yaw = 90°) : le point de droite est devant
+  near(G.viewCoords(eye, Math.PI / 2, 0, { x: 9, y: 3, z: 1.65 }).z, 4, 1e-12);
+  // Regard plongeant : un point au sol devant est au centre
+  const pitch = -Math.atan2(1.65, 2);
+  const g = G.viewCoords(eye, 0, pitch, { x: 5, y: 5, z: 0 });
+  near(g.y, 0, 1e-12);
+  near(g.x, 0, 1e-12);
+  // Visibilité : 108° × 65° ; derrière la caméra = invisible
+  assert(G.inView(eye, 0, 0, { x: 5, y: 8, z: 1.65 }, 108, 65));
+  assert(!G.inView(eye, 0, 0, { x: 5, y: 1, z: 1.65 }, 108, 65), 'derrière');
+  assert(G.inView(eye, 0, 0, { x: 8.5, y: 6, z: 1.65 }, 108, 65), 'à 49° sur le côté');
+  assert(!G.inView(eye, 0, 0, { x: 8.5, y: 6, z: 1.65 }, 90, 65), 'hors d’un champ de 90°');
+  near(G.horizontalFov(G.verticalFov(108, 2.17, 10, 170), 2.17), 108, 1e-9, 'champs horizontal ↔ vertical');
 });

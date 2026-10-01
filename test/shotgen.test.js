@@ -6,6 +6,7 @@ import P from '../src/core/physics.js';
 import CFG from '../src/core/config.js';
 import Q from '../src/core/quality.js';
 import SG from '../src/core/shotgen.js';
+import PL from '../src/core/players.js';
 import { SEEDS, START } from './helpers.js';
 
 section('Génération des balles adverses');
@@ -13,17 +14,27 @@ section('Génération des balles adverses');
 test('toute balle générée est atteignable selon config.js (toutes familles, niveaux, positions)', () => {
   const positions = [{ x: 5, y: 3 }, { x: 1, y: 1 }, { x: 9, y: 8 }, { x: 2, y: 9 }];
   let n = 0;
+  let none = 0;
   for (const family of SG.FAMILY_IDS) {
     for (let level = 1; level <= 5; level += 2) {
       for (const player of positions) {
         for (let i = 0; i < 6; i++) {
-          const shot = SG.generateShot({ seed: 500 + i * 131 + level, family, level, player });
-          assert(shot, `aucune balle ${family} niv. ${level}`);
+          const seed = 500 + i * 131 + level;
+          const shot = SG.generateShot({ seed, family, level, player });
+          if (!shot) {
+            // Avec une accélération réaliste, quelques combinaisons extrêmes (joueur au filet dans un coin,
+            // balle rapide à l'opposé) sont injouables : la partie passe alors à une autre famille.
+            none++;
+            assert(SG.generateAny({ seed, family, level, player }), `aucune balle de repli ${family} niv. ${level}`);
+            n++;
+            continue;
+          }
           // Recalcul indépendant de l'atteignabilité
           const best = Q.bestChoice(shot, player, CFG);
           assert(best.best && best.best.quality >= CFG.quality.playable, 'qualité atteignable insuffisante');
           assert(best.best.margin >= 0, 'point de frappe atteint trop tard');
-          const travel = Math.hypot(best.best.pos.x - player.x, best.best.pos.y - player.y) / CFG.player.speed;
+          // Trajet avec accélération, croisière et freinage (players.js)
+          const travel = PL.travelTime(Math.hypot(best.best.pos.x - player.x, best.best.pos.y - player.y), CFG.player);
           assert(best.best.t - shot.tStart >= CFG.player.reactionTime + travel - 1e-9, 'réaction + trajet > temps disponible');
           n++;
         }
@@ -31,6 +42,7 @@ test('toute balle générée est atteignable selon config.js (toutes familles, n
     }
   }
   assert(n === 5 * 3 * 4 * 6);
+  assert(none <= 4, `trop de combinaisons sans balle : ${none} / ${n}`);
 });
 
 test('chaque famille est générée avec la séquence de contacts attendue et retombe chez le joueur', () => {

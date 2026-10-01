@@ -6,10 +6,37 @@
 
 const CONFIG = {
   player: {
-    speed: 4.0, // vitesse max de déplacement du joueur (m/s, en temps de jeu)
+    speed: 5.0, // vitesse max de déplacement du joueur, joystick à fond (m/s, en temps de jeu)
+    accel: 10, // accélération (m/s²) : ≈ 0,5 s pour atteindre la pleine vitesse
+    decel: 18, // freinage (m/s²)
     reactionTime: 0.25, // délai de réaction après la frappe adverse (s)
     start: { x: 5, y: 3 }, // position de départ (m) : centre, un peu devant la ligne de service
     bounds: { xMin: 0.3, xMax: 9.7, yMin: 0.3, yMax: 9.5 }, // zone de jeu (moitié de défense)
+  },
+
+  // Joueurs IA (partenaire et adversaires) : mêmes lois de déplacement, réaction et split-step
+  ai: {
+    speed: 5.5, // sprint (m/s)
+    accel: 10,
+    decel: 18,
+    reaction: 0.22, // temps de réaction après une frappe adverse (s), split-step compris
+    splitDuration: 0.16, // durée du petit saut d'équilibre (s)
+    hop: 0.06, // hauteur du split-step (m)
+  },
+
+  // Vue 1re personne : un seul réglage, fixé par le jeu (aucun choix de vue ni de champ de vision)
+  view: {
+    hFov: 108, // champ horizontal en paysage (°)
+    vFovMin: 60, // champ vertical minimal (°) : le sol proche reste visible
+    vFovMax: 100, // champ vertical maximal (°) : en portrait, le champ horizontal se réduit
+    deadYaw: 0.22, // zone morte du regard quand la balle est loin (rad)
+    basePitch: -0.28, // regard légèrement plongeant (rad, ≈ −16°)
+    pitchFollow: 0.45, // suivi de la hauteur de la balle quand elle est loin (0–1)
+    nearFrom: 1.2, // en deçà (m), suivi serré de la balle
+    nearTo: 5.5, // au-delà (m), regard calme
+    anticipation: 0.22, // balle derrière soi qui revient : on regarde où elle sera dans 0,22 s
+    behindFrom: 1.4, // « derrière » commence à 80° du filet (rad)…
+    behindTo: 2.27, // … et l'est complètement à 130°
   },
 
   strike: {
@@ -115,7 +142,9 @@ const CONFIG = {
     hSpeed: [5, 24], // vitesse horizontale admise des balles adverses (m/s)
   },
   game: {
-    speeds: [0.5, 0.75, 1], // vitesses de jeu proposées
+    // Vitesse du jeu fixée par la difficulté adaptative (remplace l'ancien réglage) : le niveau 1 démarre
+    // plus lent, le niveau 5 est en temps réel
+    levelSpeed: [0.75, 0.84, 0.92, 0.97, 1],
     missPause: 1.3, // pause après un échange perdu (s de jeu)
     feedbackMs: 1800, // durée d'affichage du feedback (ms, temps réel)
   },

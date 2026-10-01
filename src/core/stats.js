@@ -4,10 +4,15 @@
  * Fonctions pures : la lecture / écriture du localStorage est faite par src/storage.js.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const MATCH_FAMILIES = ['direct', 'A', 'B', 'C', 'D'];
 export const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass'];
 const MAX_BALLS = 5000;
+
+/** Bilan cumulé des parties en double : [gagnés, perdus] pour les points, jeux et sets. */
+function emptyRecord() {
+  return { points: [0, 0], games: [0, 0], sets: [0, 0] };
+}
 
 /** État vierge. `settings` reçoit les valeurs par défaut fournies par l'interface. */
 function createState(defaultSettings) {
@@ -18,11 +23,23 @@ function createState(defaultSettings) {
     bestStreak: 0,
     guideDone: false,
     settings: Object.assign({}, defaultSettings),
+    record: emptyRecord(),
     balls: [],
   };
 }
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
+
+/** Bilan relu d'une sauvegarde : entiers positifs uniquement, sinon zéro. */
+function cleanRecord(raw) {
+  const out = emptyRecord();
+  if (!raw || typeof raw !== 'object') return out;
+  for (const k in out) {
+    const pair = raw[k];
+    if (Array.isArray(pair)) for (const i of [0, 1]) out[k][i] = Math.max(0, Math.round(+pair[i]) || 0);
+  }
+  return out;
+}
 
 /** Une balle enregistrée est-elle exploitable ? (les autres sont ignorées à la migration) */
 function validBall(b) {
@@ -46,7 +63,8 @@ function migrate(raw, defaultSettings) {
   const fresh = createState(defaultSettings);
   if (!raw || typeof raw !== 'object') return { state: fresh, from: 0 };
   try {
-    if (raw.version === SCHEMA_VERSION) {
+    if (raw.version === SCHEMA_VERSION || raw.version === 2) {
+      // Version 2 (échange en duel) : même structure ; les réglages supprimés sont abandonnés
       const balls = Array.isArray(raw.balls) ? raw.balls.filter(validBall).slice(-MAX_BALLS) : [];
       return {
         state: {
@@ -56,9 +74,10 @@ function migrate(raw, defaultSettings) {
           bestStreak: Math.max(0, Math.round(+raw.bestStreak) || 0),
           guideDone: !!raw.guideDone,
           settings: cleanSettings(raw.settings, defaultSettings),
+          record: cleanRecord(raw.record),
           balls,
         },
-        from: SCHEMA_VERSION,
+        from: raw.version,
       };
     }
     if (raw.version === 1 || Array.isArray(raw.attempts)) {
@@ -217,6 +236,7 @@ const Stats = {
   SCHEMA_VERSION,
   MATCH_FAMILIES,
   SHOT_TYPES,
+  emptyRecord,
   createState,
   validBall,
   migrate,

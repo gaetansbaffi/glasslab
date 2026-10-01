@@ -8,6 +8,7 @@
 
 import P from './physics.js';
 import G from './geometry.js';
+import PL from './players.js';
 import DEFAULT_CONFIG from './config.js';
 
 const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass'];
@@ -157,10 +158,13 @@ function idealPosition(b, from, cfg) {
   return d(cand[0]) <= d(cand[1]) ? cand[0] : cand[1];
 }
 
-/** Marge de temps : temps disponible depuis la frappe adverse, moins réaction et trajet. */
+/**
+ * Marge de temps : temps disponible depuis la frappe adverse, moins réaction et trajet
+ * (accélération, croisière et freinage : players.travelTime).
+ */
 function timeMargin(shot, t, from, to, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
-  const travel = Math.hypot(to.x - from.x, to.y - from.y) / cfg.player.speed;
+  const travel = PL.travelTime(Math.hypot(to.x - from.x, to.y - from.y), cfg.player);
   return t - shot.tStart - cfg.player.reactionTime - travel;
 }
 

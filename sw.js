@@ -2,7 +2,7 @@
  * Glass Lab — service worker : cache-first des fichiers locaux, jeu jouable hors ligne après le premier
  * chargement. Changer VERSION pour publier une mise à jour : l'ancien cache est supprimé à l'activation.
  */
-const VERSION = 'glasslab-v3.2.0';
+const VERSION = 'glasslab-v4.0.0';
 const FILES = [
   './',
   './index.html',
@@ -12,18 +12,28 @@ const FILES = [
   './icons/icon-512.png',
   './vendor/three@0.170.0/three.module.min.js',
   './src/main.js',
-  './src/render.js',
   './src/input.js',
   './src/hud.js',
   './src/audio.js',
   './src/settings.js',
   './src/storage.js',
-  './src/core/physics.js',
-  './src/core/geometry.js',
+  './src/app/actors.js',
+  './src/app/device.js',
+  './src/app/game.js',
+  './src/app/perf.js',
+  './src/app/replay.js',
+  './src/view/ball.js',
+  './src/view/court.js',
+  './src/view/figures.js',
+  './src/view/renderer.js',
+  './src/core/body.js',
   './src/core/config.js',
+  './src/core/geometry.js',
+  './src/core/physics.js',
+  './src/core/players.js',
   './src/core/quality.js',
-  './src/core/shotgen.js',
   './src/core/rally.js',
+  './src/core/shotgen.js',
   './src/core/stats.js',
 ];
 
