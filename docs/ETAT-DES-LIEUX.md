@@ -1,6 +1,6 @@
 # Glass Lab — état des lieux après reconstruction
 
-> État au 1ᵉʳ octobre 2026 (effets, système de points, caméra calme, balles hautes ajoutés), dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
+> État au 1ᵉʳ octobre 2026 (effets, système de points, caméra calme, balles hautes, vraie physique ajoutés), dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
 > Le brief de reconstruction précédent (état du dépôt `glassmaster`, branche `claude/confident-curie-9n5fu8-jeu`) est dans l'historique git : commit `03ca104`.
 > Statut des informations : **[fait]** vérifié dans le code ou par les tests · **[à vérifier]** non vérifiable sans un vrai téléphone ou un joueur · **[reco]** recommandation.
 
@@ -22,8 +22,9 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 | 5. Vrai système de points (demande après publication) | `eff478a` | formats 1 set / 2 sets gagnants, super jeu décisif, fin de match, tableau de score, annonces, reprise |
 | 6. Caméra calme (retour du joueur) | `ddbbb7f` | tête plus lente, de profil au plus, regard posé sur le point de frappe, joystick par rapport au regard |
 | 7. Balles hautes (retour du joueur) | `510566b` | bandeja / víbora / smash pour toi, lob court des IA, ombre cerclée, point de chute au sol, mini-carte |
+| 8. Vraie physique (retour du joueur) | `9f37cfd` | air (traînée, Magnus), rebonds avec frottement et restitution réalistes, grillage, temps réel à tous les niveaux |
 
-`node test/run.js` : **117 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
+`node test/run.js` : **110 tests, 0 échec** (les 10 tests de l'ancien duel, retiré, ne comptent plus). Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
 
 ## 3. Critères d'acceptation du brief (§9)
 
@@ -60,18 +61,18 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 
 ### 5.1 Effets de balle [fait]
 
-- **Modèle** (`physics.js`) : la balle porte un vecteur rotation. En vol, effet Magnus figé sur chaque segment (le calcul reste exact et déterministe) ; aux contacts (sol, vitres), le frottement transforme une partie de la rotation en vitesse, dans la limite du frottement disponible. **Sans effet, la trajectoire est identique au bit près** à l'ancienne (vérifié sur la physique, la génération des coups et une partie complète, puis par un test).
-- **Effets mesurés** sur une balle type (même point de rebond, 1 s de vol) : hauteur maximale après la vitre de fond **0,65 m coupée**, 0,99 m sans effet, **1,54 m liftée** ; vitesse après le rebond 10,3 / 12,2 / 14,0 m/s ; latéral (150 rad/s) : 2,2 m/s de déviation au rebond.
+- **Modèle** (`physics.js`, depuis l'étape 8, § 5.4) : la balle porte un vecteur rotation. En vol, effet Magnus avec la portance mesurée sur des balles feutrées ; aux contacts (sol, vitres), le frottement agit sur la vraie vitesse de glissement (vitesse + rotation), jusqu'au roulement au plus.
+- **Effets mesurés** sur une balle type (58 km/h, même point de rebond, 1 s de vol) : hauteur maximale après la vitre de fond **0,74 m coupée**, 1,24 m sans effet, **1,72 m liftée** ; vitesse horizontale après le rebond 6,8 / 7,6 / 9,3 m/s (11,8 avant) ; latéral (150 rad/s) : 1,05 m/s de déviation au rebond.
 - **Effet de chaque coup** (`config.styles.*.spin`) : bandeja, volée, service coupés ; víbora coupée et latérale vers la grille ; lob lifté ; smash plat ou lifté ; fond de court et défense variés. Balles reçues sur 3 matchs simulés : **coupées 33 %, liftées 20 %, coupées latérales 6 %, sans effet marqué 41 %**.
 - **Lisibilité** : balle avec sa couture, qui tourne selon l'effet (rotation affichée ralentie à 12 %, au plus 22 rad/s, sinon illisible à 60 i/s) ; étiquette de 1,3 s sur la balle qui t'arrive ; ligne « Effet » dans le Détail (ce que l'effet change et quoi faire).
-- **Rythme inchangé** : ≈ 10 frappes et ≈ 23 s par point (30 s avant, sur un autre tirage) ; génération d'un coup au pire ≈ 7 ms sur PC.
+- **Rythme** : ≈ 10 frappes et ≈ 23 s par point ; génération d'un coup au pire ≈ 12 ms sur PC (7,5 ms avant l'étape 8).
 
 ### 5.2 Vrai système de points [fait]
 
 - **Formats** (`score.js`) : **1 set** (6 jeux, jeu décisif à 6-6) ou **2 sets gagnants** avec, à 1 set partout, un **super jeu décisif** en 10 points (2 d'écart). Le match se termine : vainqueur, score par set, plus de service.
 - **Enjeux et annonces** : balle de break, de set, de match (pour vous / pour eux), point en or, jeu décisif ; annonce de l'arbitre après chaque point, **score du serveur en premier** (« 30-15 », « 15 partout », « 40 partout · point en or »), avec la raison du point ; « Jeu · vous », « Set · eux · 6-4 », « Jeu, set et match ».
 - **Interface** : tableau de score type télévision en haut à gauche ; accueil avec le format, « Reprendre » (match sauvegardé à chaque point, relu et validé au chargement) et « Nouveau match » ; écran de fin (victoire ou défaite, score par set, points, tes indicateurs) ; bilan des matchs dans Stats. Le compteur « série » quitte l'écran de jeu (il reste dans la pause et les stats).
-- **Durée mesurée** (joueur automatique qui laisse passer 1 balle sur 4, niveau 3) : **1 set en 15 à 27 min de jeu** (6-1, 4-6, 7-5). Au niveau 1, le jeu tourne à 75 % du temps réel : compter un tiers de plus. Un match en 2 sets gagnants équilibré devrait durer 30 à 50 min (estimation, non mesurée sur un match serré).
+- **Durée mesurée** (joueur automatique qui laisse passer 1 balle sur 4, niveau 3) : **1 set en 15 à 27 min de jeu** (6-1, 4-6, 7-5), mesuré avant l'étape 8 (le jeu tourne maintenant en temps réel à tous les niveaux). Un match en 2 sets gagnants équilibré devrait durer 30 à 50 min (estimation, non mesurée sur un match serré).
 
 ### 5.3 Balles hautes : coups au-dessus de la tête et lisibilité [fait]
 
@@ -82,22 +83,39 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 - **Aides, du coup adverse au rebond** (≈ 2 s en médiane) : ombre plus foncée et cerclée de blanc ; **point de chute** (cible jaune au sol, dans le court) ; **mini-carte** (104 px, en haut à droite sous Pause, rayon 7 m) **orientée comme le joystick**, y compris quand sa direction est figée pendant la course : toi au centre avec l'anneau de portée, ton partenaire, la balle (plus grosse quand elle est haute), son trajet en pointillés jusqu'au point de chute (hors de la surface du court si elle sort) et un **cercle vert à ta place idéale pour le coup au-dessus de la tête** (même repère que le cercle vert du Détail). Le point de chute est calculé une fois par vol (`flight.landing`) et toujours d'accord avec l'arbitrage (test).
 - **Mesures** (6 parties de 5 min, joueur parfait, niveau 3) : balles hautes vers ton camp **18 % des frappes adverses** (83 sur 452), dont 49 pour toi, avec un smash possible sur 37. Sur tes 249 balles : coup au-dessus de la tête **meilleur choix 8 %**, possible 16 % ; 20 joués : **bandeja 12, víbora 5, smash 3**.
 
+### 5.4 Vraie physique de balle [fait]
+
+- **Retour du joueur** : « les rebonds sur les lobs et volées n'ont aucun sens, pas cohérents avec la réalité terrestre » (et « je ne vois pas de différence » sur les aides aux balles hautes). Diagnostic mesuré en partie : le modèle d'effet ajoutait de la vitesse au rebond (frottement calculé sur la rotation seule, pas sur le vrai glissement), la restitution était fixe, il n'y avait pas d'air, et le jeu tournait au ralenti aux bas niveaux (75 % au niveau 1 : gravité perçue ≈ 0,56 g, des balles « de Lune »).
+- **Air** : traînée (C_D 0,55, balle de 57,7 g et 6,6 cm) et effet Magnus (C_L = S / (2,022 S + 0,981), S = R ω / v, mesures publiées sur des balles feutrées). Vitesse limite ≈ 22 m/s ; un smash parti à 110 km/h rebondit à ≈ 95 km/h et touche la vitre vers 55 km/h ; un lob retombe plus raide qu'il ne monte.
+- **Rebonds** : glissement puis roulement selon le frottement (gazon μ 0,6, vitre 0,3), restitution qui baisse avec la vitesse d'impact (gazon 0,78 − 0,009 v, vitre 0,80 − 0,0095 v : essai du règlement FIP respecté sur surface dure, ≈ 1,2 m sur le gazon) ; le grillage amortit (restitution 0,35). Test : 2 000 contacts aléatoires, jamais d'énergie créée, jamais de frottement au-delà du roulement.
+- **Calcul** : segments de 0,05 s d'accélération constante, évaluée au milieu (écart < 2 cm avec une intégration RK4 très fine, test) ; chaque contact reste exact dans son segment ; tir itératif (Broyden) pour viser un rebond ; la balle vue par le receveur est le vol complet lui-même.
+- **Avant → après, en partie** (4 parties de 4 min, joueur parfait, niveau 3) :
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Hauteur de remontée d'un lob après son rebond (médiane / max) | 3,81 / 4,62 m | **2,35 / 2,78 m** |
+| Lobs qui accélèrent au rebond | 65 % (jusqu'à +38 %) | 8 % (lift très appuyé seulement) |
+| Vitesse horizontale gardée au rebond (fond de court / volée) | 0,92 / 0,85 | **0,66 / 0,71** |
+| Vitesse gardée à la vitre (fond de court / smash) | 0,84 / 0,91 | 0,82 / 0,76 |
+| Vitesse du temps au niveau 1 | 75 % | **100 %** |
+| Temps médian entre la frappe adverse et ton point de frappe idéal, niveau 1 | 2,23 s (ralenti) | 1,56 s |
+
 ## 6. Calibrage (tableau du brief) [fait]
 
-Mesuré sur 4 parties simulées de 5 minutes (joueur parfait), et vérifié par un test :
+Mesuré sur 4 parties simulées de 5 minutes (joueur parfait, vraie physique depuis l'étape 8), et vérifié par un test :
 
 | Élément | Brief | Jeu |
 |---|---|---|
-| Balle de fond / défense | 40–70 km/h | 35–72 km/h (médiane 60 et 47) |
-| Volée | 50–80 km/h | 56–75 km/h |
-| Lob | 30–50 km/h, 5–8 m | 36–49 km/h, 5,0–8,3 m |
-| Smash | 80–120 km/h et plus | 95–101 km/h (rare : au filet seulement) |
+| Balle de fond / défense | 40–70 km/h | 38–72 et 35–70 km/h (médiane 61 et 50) |
+| Volée | 50–80 km/h | 60–83 km/h (médiane 68) |
+| Lob | 30–50 km/h, 5–8 m | **43–59 km/h** (médiane 52), 5,1–8,4 m : avec l'air, il faut partir plus vite pour monter à 5–8 m et retomber au fond |
+| Smash | 80–120 km/h et plus | 98–125 km/h (médiane 111, rare : au filet seulement) |
 | Course / sprint | 2–4 / 5–6 m/s | IA 5,5 m/s (replacement à 55 %), toi 5 m/s |
 | Pleine vitesse | ≈ 0,5 s | 0,5 s (toi), 0,55 s (IA) |
 | Réaction | 0,2–0,3 s | 0,22 s (IA), 0,25 s (calcul de l'atteignabilité) |
-| Temps entre deux frappes | 1–2 s, plus court au filet | médiane 1,6 s ; 1,4 s quand les deux équipes sont au filet |
+| Temps entre deux frappes | 1–2 s, plus court au filet | médiane 1,6 s, plus court au filet (test) |
 
-Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer une balle sur quatre. Répartition des coups : balles de fond et défense ≈ 42 %, lobs ≈ 29 %, chiquitas ≈ 10 %, volées ≈ 6 %, coups au-dessus de la tête ≈ 6 %.
+Répartition des coups : balles de fond et défense ≈ 50 %, lobs ≈ 22 % (dont lobs courts 4 %), chiquitas ≈ 10 %, services 6 %, volées 4 %, coups au-dessus de la tête ≈ 8 %.
 
 ## 7. Choix faits, à valider [reco]
 
@@ -108,6 +126,8 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 - **Effets** : valeurs plausibles (≈ 3 à 32 tours/s), non mesurées sur de vrais joueurs ; rotation affichée ralentie ; étiquette d'effet = aide d'entraînement (un vrai joueur lit l'effet sur le geste adverse).
 - **Replacement entre deux points** : court fondu au noir, les 4 joueurs sont replacés pour le service (plus confortable en 1re personne qu'un déplacement automatique de la caméra).
 - **Ton renvoi reste automatique** (lob, balle de fond ou volée selon la situation et ta qualité) : le brief entraîne la décision, pas le geste.
+- **Temps réel à tous les niveaux** (fin du ralenti, qui faussait la gravité) : au niveau 1, ≈ 30 % de temps en moins pour réagir qu'avant (1,56 s au lieu de 2,23 s en médiane). Contre-argument : le niveau 1 devient plus dur ; des balles de débutant plus lentes et plus hautes au niveau 1 ont été essayées : elles ne rendent que ≈ 0,1 s (le temps dépend surtout du type de coup). Si c'est trop dur, l'aide à prévoir est d'élargir la fenêtre de frappe aux bas niveaux, pas de ralentir le temps.
+- **Physique de référence** : coefficients publiés pour des balles feutrées et règlement FIP ; gazon (restitution un peu plus faible que sur surface dure, frottement 0,6), vitre (frottement 0,3) et grillage (restitution 0,35) sont des valeurs plausibles, à confirmer par un joueur.
 - **Aides aux balles hautes fortes** : la mini-carte dit où tombe la balle et où te placer. Contre-argument : un vrai joueur doit le lire seul, et le cercle vert apparaît dès qu'un smash est possible, même quand laisser rebondir serait meilleur (possible sur 16 % de tes balles, meilleur choix sur 8 %). Options si c'est trop facile : mini-carte réservée aux niveaux 1 à 3, ou point de chute seul.
 - **Seuils du renvoi au-dessus de la tête** (smash : qualité ≥ 0,8, à moins de 5 m du filet, contact ≥ 2,45 m ; víbora : qualité ≥ 0,6, une fois sur trois) et préférence au filet (+0,06) : non calibrés avec un entraîneur.
 - **Le partenaire est fiable** (≈ 2 fois moins de fautes que les adversaires) pour ne pas frustrer ; les adversaires peuvent gagner des points contre lui (≈ 15 % de ses balles ne sont pas forcément jouables).
@@ -115,7 +135,7 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 ## 8. Limites et dette connues [fait]
 
 - **Jamais testé sur un vrai téléphone** ; tests navigateur en Chromium sans affichage, rendu WebGL logiciel. Sur iOS, pas d'API plein écran dans Safari ni de vibration.
-- **Physique simplifiée** : effets avec Magnus figé par segment et frottement de contact simple ; pas de frottement de l'air ; le grillage renvoie comme une vitre ; murs infinis (pas de balle « por 3 » ou « por 4 »).
+- **Physique de référence, pas mesurée sur un vrai court** : la rotation ne s'amortit pas en vol ; le grillage est un simple amortisseur ; murs infinis (pas de balle « por 3 » ou « por 4 ») ; balle toujours neuve (pas d'usure ni de perte de pression).
 - **Tu ne choisis pas l'effet ni la direction de ton renvoi** : ils suivent le coup choisi automatiquement.
 - **Pas de changement de côté** aux jeux impairs (court symétrique, tu restes en bas).
 - **Pas de contact raquette-balle** : la frappe est jugée sur la position et le moment d'appui.
@@ -123,7 +143,7 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 - **Joystick par rapport au regard** (choix du joueur, contre le brief) : la direction reste figée tant que le pouce pousse ; après une grande rotation de la caméra, il faut relâcher pour repartir dans la direction regardée.
 - **Pas de coup au-dessus de la tête après le rebond** (balle haute qui ressort de la vitre) : elle se joue en défense. Tu ne choisis pas entre bandeja, víbora et smash (automatique).
 - **`src/core` alloue de petits objets à chaque pas** (états immuables, 4 joueurs) ; la génération d'une balle à la frappe adverse coûte ≈ 0,4 ms en médiane et jusqu'à ≈ 9 ms au pire sur PC (≈ 4 fois plus sur téléphone : une image sautée possible, rarement).
-- `rally.js` (duel d'origine) n'est plus utilisé par le jeu ; il est conservé car testé et réutilisé (motifs de perte).
+- L'ancien duel (`rally.js`) et le générateur de balles du demi-court ont été retirés à l'étape 8 : le jeu ne les utilisait plus et ils reposaient sur l'ancienne physique sans air (les motifs de perte sont dans `match.js`).
 - **Publication** : chaque envoi publie après les tests ; une version plus ancienne que celle en ligne n'est jamais republiée (cas vécu : la création de `main` sur le commit d'import avait remis l'ancien jeu en ligne) ; une republication sans nouveau code passe par « Run workflow » ou une étiquette `publication-*` (droits du propriétaire du dépôt : l'accès de Claude Code est refusé, 403) ; la version en ligne s'affiche en bas de l'accueil.
 
 ## 9. À tester à la main sur un vrai téléphone [à vérifier]
@@ -140,11 +160,12 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 9. **Effets** : l'étiquette (« Balle coupée »…) se lit sans gêner ; la rotation de la balle se voit quand elle approche ; une balle coupée reste basse après la vitre, une liftée sort haut (ressenti de joueur).
 10. **Score** : tableau lisible en plein jeu sur un petit écran ; annonces compréhensibles (« 15-30 » serveur d'abord) ; fin de match et écran de fin ; **Reprendre** après avoir fermé l'application (le match reprend au même score).
 11. **Balles hautes** : la mini-carte se lit d'un coup d'œil sans gêner (taille, place sous Pause) ; pousser le pouce vers le cercle vert y mène ; le point de chute au sol aide quand il est visible ; bandeja et smash réussis sur un lob court ; trop ou pas assez d'aide ?
+12. **Physique** : rebonds des lobs, des volées et des sorties de vitre crédibles (« comme sur un vrai court ») ; vitesse du jeu au niveau 1 supportable en temps réel.
 
 ## 10. Suites possibles [reco]
 
 1. Tester sur 2 ou 3 téléphones (Android milieu de gamme, iPhone) et ajuster le confort (vitesse de tête, zone morte, fondu) et la cadence.
 2. Calibrer avec un entraîneur : poids de la qualité, meilleur choix, choix des coups et fautes des IA, part des balles vers toi.
-3. Grillage réaliste et sorties « por 3 / por 4 », frottement de l'air ; valider les valeurs d'effet avec un joueur.
+3. Sorties « por 3 / por 4 » (murs finis, balle jouable hors du court) ; valider avec un joueur les rebonds sur le gazon, les vitres et le grillage.
 4. Donner au joueur le choix de la direction et de l'effet de son renvoi (par exemple : glisser sur Frappe vers le haut = lift, vers le bas = coupé), si l'entraînement de la décision le justifie.
 5. Changement de côté aux jeux impairs (pause de 90 s raccourcie) et statistiques par match (aces, fautes directes, coups gagnants).
