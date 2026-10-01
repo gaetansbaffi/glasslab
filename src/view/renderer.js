@@ -74,11 +74,24 @@ export function createRenderer(canvas, opts) {
     camera.updateProjectionMatrix();
   }
 
+  const proj = new THREE.Vector3();
+  /** Projection d'un point monde à l'écran (pixels CSS) ; visible = devant la caméra et dans l'image. */
+  function project(p, out) {
+    G.worldToSceneInto(proj, p.x, p.y, p.z);
+    proj.project(camera);
+    out = out || {};
+    out.x = ((proj.x + 1) / 2) * size.w;
+    out.y = ((1 - proj.y) / 2) * size.h;
+    out.visible = proj.z > -1 && proj.z < 1 && Math.abs(proj.x) <= 1 && Math.abs(proj.y) <= 1;
+    return out;
+  }
+
   return {
     renderer,
     figures,
     ball: ballView,
     setCamera,
+    project,
     render() {
       figures.commit();
       renderer.render(scene, camera);

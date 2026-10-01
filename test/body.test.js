@@ -267,3 +267,27 @@ test('la balle reste visible au moment de frapper (regard qui suit la balle, cha
   assert(checked >= 100, 'contacts observés : ' + checked);
   assert(visible === checked, `balle hors champ au contact : ${checked - visible} / ${checked}`);
 });
+
+test('1re personne : pendant ton geste, la main et la raquette ne passent jamais devant tes yeux', () => {
+  const pos = { x: 5, y: 3 };
+  const sk = B.createSkeleton();
+  let worst = Infinity;
+  for (const hand of [1, -1]) {
+    for (const stroke of ['ground', 'lob', 'volley']) {
+      for (const side of [1, -1]) {
+        for (const h of [0.3, 0.8, 1.2, 1.7]) {
+          const aim = B.bodyPoint(pos, 0, 0.62 * side, 0.3, h);
+          const look = B.createLook(0, -0.3);
+          for (let s = 0; s <= 1.0001; s += 0.02) {
+            const r = B.racketPose({ pos, bodyYaw: 0, hand, mode: 'swing', stroke, side, height: h, swing: s, aim, crouch: B.crouchFor(h), fp: true });
+            B.skeleton({ x: pos.x, y: pos.y, bodyYaw: 0, gazeYaw: 0, gazePitch: -0.3, hand, racket: r, crouch: B.crouchFor(h), twist: B.twistFor('swing', side, 0, s) }, sk);
+            const eye = B.eyePosition(pos, look, B.crouchFor(h) * 0.4, 0);
+            const handPt = hand > 0 ? sk.handR : sk.handL;
+            worst = Math.min(worst, dist(handPt, eye), dist(sk.racket.head, eye));
+          }
+        }
+      }
+    }
+  }
+  assert(worst >= 0.28, 'main ou raquette à ' + worst.toFixed(2) + ' m des yeux');
+});

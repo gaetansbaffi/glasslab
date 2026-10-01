@@ -219,6 +219,12 @@ function decisionStats(balls) {
   return { n: hits.length, accuracy: hits.length ? hits.filter((b) => b.decisionOk).length / hits.length : null, byChosen };
 }
 
+/** Double : part de tes frappes jouées aligné avec ton partenaire (balles enregistrées depuis la v3). */
+function doublesStats(balls) {
+  const list = balls.filter((b) => typeof b.aligned === 'boolean');
+  return { n: list.length, aligned: list.length ? list.filter((b) => b.aligned).length / list.length : null };
+}
+
 /** Résumé d'une session (balles jouées, qualité moyenne, meilleure série, précision de décision). */
 function sessionSummary(balls, session) {
   const list = balls.filter((b) => b.session === session);
@@ -246,6 +252,7 @@ const Stats = {
   familyWeights,
   familyStats,
   decisionStats,
+  doublesStats,
   sessionSummary,
 };
 

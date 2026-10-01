@@ -164,18 +164,22 @@ export function createFigures(scene, track, count) {
     faces.setMatrixAt(i, ZERO);
   }
 
+  /** Pièce trop près des yeux du joueur en 1re personne (elle masquerait l'écran) : masquée. */
+  const tooClose = (eye, a, b) => eye && Math.hypot((a.x + b.x) / 2 - eye.x, (a.y + b.y) / 2 - eye.y, (a.z + b.z) / 2 - eye.z) < 0.25;
+
   /**
    * Pose du joueur i à partir de son squelette (core/body.js : skeleton) et de son orientation.
-   * look = { bodyYaw, gazeYaw, gazePitch }.
+   * look = { bodyYaw, gazeYaw, gazePitch } ; eye = position des yeux (1re personne seulement).
    */
-  function update(i, sk, look) {
+  function update(i, sk, look, eye) {
     const p = players[i];
     if (!sk) return hide(i);
+    eye = p.fp ? eye : null;
     // Droite du corps (repère scène) : monde (cos, −sin) → scène (cos, 0, sin)
     const by = look.bodyYaw;
     H.set(Math.cos(by), 0, Math.sin(by));
     LIMBS.forEach((l, k) => {
-      if (p.fp && k === NECK) return limbs.setMatrixAt(i * LIMBS.length + k, ZERO);
+      if ((p.fp && k === NECK) || tooClose(eye, sk[l[0]], sk[l[1]])) return limbs.setMatrixAt(i * LIMBS.length + k, ZERO);
       segment(limbs, i * LIMBS.length + k, sk[l[0]], sk[l[1]], l[2], l[2], H);
     });
     // Buste (épaules plus larges que la taille) et short
@@ -186,7 +190,10 @@ export function createFigures(scene, track, count) {
     high.z = sk.pelvis.z + 0.06;
     segment(torsos, i * 2 + 1, low, high, 0.17, 0.115, H);
     const nb = JOINT_BALLS.length + 1;
-    JOINT_BALLS.forEach((j, k) => sphere(i * nb + k, sk[j[0]], j[1], j[1], j[1]));
+    JOINT_BALLS.forEach((j, k) => {
+      if (tooClose(eye, sk[j[0]], sk[j[0]])) balls.setMatrixAt(i * nb + k, ZERO);
+      else sphere(i * nb + k, sk[j[0]], j[1], j[1], j[1]);
+    });
     if (p.fp) balls.setMatrixAt(i * nb + JOINT_BALLS.length, ZERO);
     else sphere(i * nb + JOINT_BALLS.length, sk.head, 0.1, 0.118, 0.106);
     // Pieds : du talon vers la pointe

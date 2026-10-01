@@ -121,6 +121,57 @@ const CONFIG = {
     },
   },
 
+  /*
+   * Coups des 4 joueurs (court complet). Pour chaque style :
+   *   mode 'net'   : hauteur de passage au-dessus du filet (m), [niveau 1, niveau 5] ;
+   *   mode 'speed' : vitesse au départ de la raquette (m/s), [niveau 1, niveau 5], trajectoire tendue ;
+   *   depth        : distance du rebond à la vitre de fond du receveur (m) ;
+   *   kmh          : vitesse au départ admise (km/h), ordres de grandeur du brief (à calibrer) ;
+   *   apex         : hauteur maximale (m) avant le rebond ;
+   *   contact      : hauteurs de frappe où le coup est jouable (m).
+   */
+  styles: {
+    drive: { name: 'Balle de fond', mode: 'net', net: [[2.0, 2.9], [1.15, 1.75]], depth: [1.2, 8.6], kmh: [38, 72], apex: [0, 3.6], contact: [0.3, 1.9] },
+    defense: { name: 'Défense après vitre', mode: 'net', net: [[2.3, 3.2], [1.5, 2.4]], depth: [1.0, 8.0], kmh: [35, 70], apex: [0, 4.2], contact: [0.3, 1.9] },
+    lob: { name: 'Lob', mode: 'net', net: [[4.6, 6.6], [4.2, 6.0]], depth: [0.6, 3.6], kmh: [28, 52], apex: [4.6, 8.6], contact: [0.2, 1.9] },
+    chiquita: { name: 'Chiquita', mode: 'net', net: [[1.05, 1.4], [0.98, 1.25]], depth: [6.4, 9.3], kmh: [22, 48], apex: [0, 2.2], contact: [0.2, 1.5] },
+    volley: { name: 'Volée', mode: 'speed', speed: [[14, 18], [17, 22]], depth: [1.5, 8.6], kmh: [48, 82], apex: [0, 2.4], contact: [0.5, 1.95] },
+    bandeja: { name: 'Bandeja', mode: 'speed', speed: [[13, 16.5], [15.5, 20]], depth: [0.8, 4.8], kmh: [45, 75], apex: [0, 3.2], contact: [1.8, 3.1] },
+    vibora: { name: 'Víbora', mode: 'speed', speed: [[16, 19.5], [19, 24]], depth: [1.0, 5.2], kmh: [55, 90], apex: [0, 3.2], contact: [1.8, 3.1] },
+    smash: { name: 'Smash', mode: 'speed', speed: [[22.5, 26], [26, 33]], depth: [3.0, 7.8], kmh: [80, 125], apex: [0, 3.2], contact: [2.0, 3.1] },
+    serve: { name: 'Service', mode: 'net', net: [[1.55, 2.1], [1.15, 1.55]], depth: [3.3, 9.6], kmh: [32, 62], apex: [0, 2.6], contact: [0.55, 1.0] },
+  },
+  minNetClearance: 0.05, // marge au-dessus de la bande pour un coup voulu (m)
+
+  // Tactique du double (repère de chaque équipe : sa vitre de fond en y = 0)
+  tactics: {
+    defenseY: 2.4, // défense : au fond, devant les vitres (m de sa vitre)
+    attackY: 7.3, // attaque : au filet
+    halfWidth: 2.35, // demi-écart entre partenaires en défense (m)
+    attackHalfWidth: 2.05, // … et au filet
+    shift: 0.3, // déplacement latéral de la paire vers la balle (fraction de l'écart au centre)
+    shiftMax: 1.1,
+    centerBand: 0.75, // balle au centre (± m) : le mieux placé, à égalité celui dont le coup droit est au centre
+    forehandBonus: 0.25, // avantage (s) du coup droit au centre
+    alignTolerance: 2.0, // au-delà (m), le partenaire s'aligne sur toi plutôt que sur le plan de l'équipe
+  },
+
+  // Partie orientée entraînement (option b du brief) : les adversaires visent plus souvent ton côté
+  training: {
+    userShare: 0.65, // part des balles adverses vers toi
+    partnerPlayable: 0.5, // les balles vers ton partenaire restent jouables pour lui…
+    partnerWinner: 0.1, // … sauf ≈ 10 % : coups gagnants possibles
+  },
+
+  // Fautes des IA : base + part liée à la difficulté de la balle reçue + risque du coup
+  errors: {
+    opponent: { base: 0.05, hard: 0.3 },
+    partner: { base: 0.025, hard: 0.12 },
+    risk: { smash: 0.06, vibora: 0.04, chiquita: 0.03, lob: 0.02, bandeja: 0.015, volley: 0.01, drive: 0, defense: 0.01, serve: 0 },
+  },
+  // Zone de frappe au-dessus de la tête (IA : bandeja, víbora, smash)
+  overhead: { zMin: 1.9, zMax: 3.1, ideal: [2.3, 2.8], reach: 1.0 },
+
   difficulty: {
     window: 10, // nombre de balles récentes considérées
     up: 0.8, // taux de réussite au-delà duquel le niveau monte

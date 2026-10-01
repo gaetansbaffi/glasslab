@@ -12,6 +12,7 @@
 import P from './physics.js';
 import G from './geometry.js';
 import Q from './quality.js';
+import F from './flight.js';
 import DEFAULT_CONFIG from './config.js';
 
 const FAMILIES = {
@@ -72,8 +73,8 @@ function directCandidate(seed, level, cfg) {
   return { init, sim: P.simulate(init, { maxFloorBounces: 2, tMax: 6 }) };
 }
 
-/** Contrôles de vraisemblance d'une balle à vitres. */
-function glassPlausible(sim, family) {
+/** Contrôles de vraisemblance d'une balle à vitres (apexMax : hauteur maximale avant le rebond). */
+function glassPlausible(sim, family, apexMax) {
   if (sim.endReason !== 'floor' || P.classify(sim) !== family) return false;
   const walls = sim.contacts.filter((c) => c.type !== 'floor');
   const floors = sim.contacts.filter((c) => c.type === 'floor');
@@ -86,7 +87,7 @@ function glassPlausible(sim, family) {
   if (floors[1].pos.y < 0.5) return false; // retombe à au moins 0,5 m de la vitre de fond
   let apex = 0;
   for (const s of P.sample(sim, 1 / 30, 0, floors[0].t)) apex = Math.max(apex, s.z);
-  return apex < 3.5; // pas de chandelle irréaliste
+  return apex < (apexMax || 3.5); // pas de chandelle irréaliste (sauf lob voulu)
 }
 
 /** Balle à vitres (familles A à D) : un tirage de paramètres de lancer, côté gauche ou droit. */
@@ -224,6 +225,142 @@ function sequence(seed, n, o) {
   return out;
 }
 
+/* ---------- Coups de n'importe quel joueur, vers n'importe quelle zone (court complet) ---------- */
+
+const NET_Y = 10;
+
+/** Durée de vol pour passer le filet à la hauteur hNet puis rebondir en `bounce` (repère du receveur). */
+function netTime(origin, bounce, hNet, cfg) {
+  const g = P.DEFAULT_PARAMS.g;
+  const r = P.DEFAULT_PARAMS.radius;
+  const f = (origin.y - NET_Y) / (origin.y - bounce.y); // fraction du trajet horizontal parcourue au filet
+  if (!(f > 0 && f < 1)) return null;
+  const T2 = (2 * (hNet - origin.z - (r - origin.z) * f)) / (g * f * (1 - f));
+  return T2 > 0 ? Math.sqrt(T2) : null;
+}
+
+/**
+ * Durée de vol d'une trajectoire tendue partant à `speed` m/s et rebondissant en `bounce` :
+ * branche rapide (la plus courte) de l'équation |v(T)| = speed ; null si la vitesse ne suffit pas.
+ */
+function flatTime(origin, bounce, speed) {
+  const g = P.DEFAULT_PARAMS.g;
+  const c = P.DEFAULT_PARAMS.radius - origin.z;
+  const dh = Math.hypot(bounce.x - origin.x, bounce.y - origin.y);
+  const v = (T) => Math.hypot(dh, c + (g * T * T) / 2) / T;
+  const tMin = Math.sqrt((2 * Math.hypot(c, dh)) / g); // trajectoire de vitesse minimale
+  if (v(tMin) > speed) return null;
+  let lo = 0.01;
+  let hi = tMin;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (v(mid) > speed) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * Lancement d'un coup de style donné depuis `origin` (repère du receveur, y > 10) vers un rebond tiré dans
+ * `zone` { x: [a, b], y: [a, b] }. Vérifie la vitesse (ordres de grandeur du style), le passage du filet
+ * et la hauteur maximale. Retourne { init, net (état au plan du filet), tn (durée frappe → filet), bounce } ou null.
+ */
+function styleLaunch(origin, style, zone, level, rng, cfg) {
+  const st = cfg.styles[style];
+  const g = P.DEFAULT_PARAMS.g;
+  const k = (level - 1) / (cfg.shotgen.levels - 1);
+  const rnd = (a) => lerp(a[0], a[1], rng());
+  const range = (pair) => [lerp(pair[0][0], pair[1][0], k), lerp(pair[0][1], pair[1][1], k)];
+  const bounce = { x: rnd(zone.x), y: rnd(zone.y) };
+  let T;
+  if (st.mode === 'net') {
+    let h = rnd(range(st.net));
+    // Frappé près du filet (attaque), le coup est plus tendu
+    if (style === 'drive' || style === 'defense') h = Math.max(cfg.rally.minNetHeight, h - cfg.rally.attackDrop * Math.max(0, Math.min(1, (17 - origin.y) / 5)));
+    T = netTime(origin, bounce, h, cfg);
+  } else T = flatTime(origin, bounce, rnd(range(st.speed)));
+  if (!T) return null;
+  const init = P.launchToBounce(origin, bounce, T);
+  const kmh = P.speed(init) * 3.6;
+  if (kmh < st.kmh[0] || kmh > st.kmh[1]) return null;
+  if (!(init.vy < 0)) return null;
+  const tn = (NET_Y - origin.y) / init.vy;
+  const net = G.ballistic(init, tn, g);
+  if (net.z < P.COURT.netHeight + cfg.minNetClearance || net.x < 0.2 || net.x > 9.8) return null;
+  const tTop = init.vz / g;
+  const top = tTop > 0 && tTop < T ? G.ballistic(init, tTop, g).z : origin.z;
+  if (top < st.apex[0] || top > st.apex[1]) return null;
+  return { init, net: { x: net.x, y: NET_Y, z: net.z, vx: net.vx, vy: net.vy, vz: net.vz }, tn, bounce };
+}
+
+/**
+ * Zone de rebond (repère du receveur) d'une famille, du côté `side` = { xMin, xMax } couvert par le
+ * receveur, croisée avec la profondeur du style quand elles se recouvrent (sinon celle de la famille).
+ */
+function familyZone(family, side, style, cfg) {
+  const fam = family === 'direct' ? { xb: [1.5, 8.5], yb: cfg.shotgen.direct.yb } : cfg.shotgen.glass[family];
+  let xb = fam.xb.slice();
+  // Familles à parois latérales : la paroi du côté du receveur
+  if ((family === 'B' || family === 'C' || family === 'D') && (side.xMin + side.xMax) / 2 < 5) xb = [10 - xb[1], 10 - xb[0]];
+  const x = [Math.max(xb[0], side.xMin), Math.min(xb[1], side.xMax)];
+  if (x[1] - x[0] < 0.3) return null;
+  const sd = cfg.styles[style].depth;
+  const y0 = Math.max(fam.yb[0], sd[0]);
+  const y1 = Math.min(fam.yb[1], sd[1]);
+  return { x, y: y1 - y0 >= 0.5 ? [y0, y1] : fam.yb.slice() };
+}
+
+/**
+ * Coup d'un joueur vers l'équipe adverse, sur le court complet.
+ * o = {
+ *   origin { x, y, z } (monde) : point de frappe ; team : équipe du frappeur (0 bas, 1 haut) ;
+ *   style (config.styles) ; zone { x, y } (repère du receveur) ou family + side (balle d'entraînement) ;
+ *   receiver : { pos { x, y } (monde), config (lois de déplacement du receveur), playable } : la balle doit
+ *              être jouable par lui (meilleur choix ≥ playable) — facultatif ;
+ *   level, seed, config, extra (champs ajoutés au vol)
+ * }
+ * Retourne un vol (flight.js) valide — la balle passe le filet et rebondit chez le receveur —, avec
+ * .shot (balle vue par le receveur, .family, .best si receiver), ou null.
+ */
+function generateTo(o) {
+  const cfg = o.config || DEFAULT_CONFIG;
+  const level = Math.max(1, Math.min(cfg.shotgen.levels, o.level || 1));
+  const recv = 1 - o.team;
+  const origin = F.toTeamFrame(recv, o.origin);
+  if (!(origin.y > NET_Y + 0.05)) return null;
+  const st = cfg.styles[o.style];
+  const zone = o.family ? familyZone(o.family, o.side || { xMin: 0.3, xMax: 9.7 }, o.style, cfg) : o.zone || { x: [0.6, 9.4], y: st.depth };
+  if (!zone) return null;
+  const recvPos = o.receiver ? F.toTeamFrame(recv, o.receiver.pos) : null;
+  const playable = o.receiver && o.receiver.playable != null ? o.receiver.playable : cfg.quality.playable;
+  const attempts = o.attempts || cfg.shotgen.maxAttempts;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const rng = P.mulberry32(mixSeed(o.seed, attempt));
+    const c = styleLaunch(origin, o.style, zone, level, rng, cfg);
+    if (!c) continue;
+    const half = P.simulate(c.net, { maxFloorBounces: 2, tMax: 6 });
+    if (!half.contacts.length || half.contacts[0].type !== 'floor') continue; // dehors : vitre avant le rebond
+    const family = F.familyOf(half);
+    if (o.family) {
+      if (family !== o.family) continue;
+      if (family === 'direct' ? half.endReason !== 'floor' : !glassPlausible(half, family, st.apex[1])) continue;
+    }
+    const shot = { init: c.net, sim: half, tStart: -c.tn, endT: half.endT, family };
+    if (recvPos) {
+      const best = Q.bestChoice(shot, recvPos, o.receiver.config || cfg);
+      if (!best.best || best.best.quality < playable) continue;
+      shot.best = best;
+    }
+    const flight = F.makeFlight(F.fromTeamFrame(recv, c.init), o.team, Object.assign({ style: o.style, level }, o.extra || {}));
+    if (flight.verdict.fault || !flight.shot) continue; // cohérence avec la physique du court complet
+    flight.shot.family = family;
+    if (shot.best) flight.shot.best = shot.best;
+    flight.attempts = attempt + 1;
+    return flight;
+  }
+  return null;
+}
+
 const ShotGen = {
   FAMILIES,
   FAMILY_IDS,
@@ -234,6 +371,11 @@ const ShotGen = {
   generateShot,
   generateAny,
   sequence,
+  netTime,
+  flatTime,
+  styleLaunch,
+  familyZone,
+  generateTo,
 };
 
 export default ShotGen;

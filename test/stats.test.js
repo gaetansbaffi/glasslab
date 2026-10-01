@@ -129,3 +129,9 @@ test('export / import JSON : aller-retour, fichiers étrangers refusés', () => 
     assert(threw, 'refusé : ' + bad);
   }
 });
+
+test('double : part des frappes jouées aligné avec le partenaire', () => {
+  const d = Stats.doublesStats([ball({ aligned: true }), ball({ aligned: false }), ball({ aligned: true }), ball({})]);
+  assert(d.n === 3 && Math.abs(d.aligned - 2 / 3) < 1e-12, JSON.stringify(d));
+  assert(Stats.doublesStats([]).aligned === null);
+});

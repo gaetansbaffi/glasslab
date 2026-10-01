@@ -40,7 +40,7 @@ export function createHud() {
     if (r.outcome === 'miss' && r.reason !== 'weak') {
       return { level: 'bad', icon: '✕', title: `${r.reasonLabel} · mieux : ${lower(r.bestType)}`, sub: MISS_HINT[r.reason] };
     }
-    const why = Q.weakness(r, cfg);
+    const why = Q.weakness(r, cfg) || Q.doublesAdvice(r.doubles);
     if (r.outcome === 'miss') return { level: 'bad', icon: '✕', title: `${NAMES[r.type]} ${fmt(r.quality)} · dans le filet`, sub: why || MISS_HINT.weak };
     const level = r.quality >= cfg.quality.good ? 'good' : r.quality >= cfg.quality.ok ? 'ok' : 'bad';
     const icon = level === 'good' ? '✓' : level === 'ok' ? '~' : '!';
@@ -135,6 +135,38 @@ export function createHud() {
     }
   }
 
+  /* ----- Annonces du partenaire (« À moi ! », « À toi ! ») au-dessus de sa tête ----- */
+
+  const callEl = $('call');
+  let callTimer = 0;
+  function call(text) {
+    callEl.textContent = text;
+    callEl.hidden = false;
+    clearTimeout(callTimer);
+    callTimer = setTimeout(() => (callEl.hidden = true), 1300);
+  }
+
+  /** Suit la tête du partenaire à l'écran ; hors champ, la bulle se range en haut à gauche. */
+  function placeCall(p) {
+    if (callEl.hidden) return;
+    const off = !p.visible;
+    callEl.classList.toggle('docked', off);
+    if (!off) callEl.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-50%, -100%)`;
+    else callEl.style.transform = '';
+  }
+
+  /* ----- Point marqué ou perdu : annonce brève, sans masquer le jeu ----- */
+
+  let pointTimer = 0;
+  function point(won, why) {
+    const el = $('pointMsg');
+    el.className = 'point-msg ' + (won ? 'won' : 'lost');
+    el.textContent = (won ? 'Point pour vous' : 'Point pour eux') + (why ? ' · ' + why : '');
+    el.hidden = false;
+    clearTimeout(pointTimer);
+    pointTimer = setTimeout(() => (el.hidden = true), 1500);
+  }
+
   /* ----- Niveau : annonce discrète quand la difficulté adaptative change ----- */
 
   let levelTimer = 0;
@@ -167,6 +199,11 @@ export function createHud() {
     for (const t of Q.SHOT_TYPES) {
       const c = ds.byChosen[t];
       if (c.n && c.topBetter && c.topBetterRate >= 0.2) tips.push(`Tu choisis ${lower(t)} alors qu’une ${lower(c.topBetter)} était meilleure ${pct(c.topBetterRate)} du temps.`);
+    }
+    const dbl = Stats.doublesStats(balls);
+    if (dbl.n >= 5) {
+      html += `<p class="small">Aligné avec ton partenaire au moment de frapper : <b>${pct(dbl.aligned)}</b> (${dbl.n} frappes).</p>`;
+      if (dbl.aligned < 0.7) tips.push('Reste aligné avec ton partenaire : montez et reculez ensemble.');
     }
     if (tips.length) html += '<h3>À travailler</h3><ul class="detail-lines">' + tips.map((t) => `<li>${t}</li>`).join('') + '</ul>';
     if (!balls.length) html += '<p class="small">Joue quelques balles pour voir tes statistiques.</p>';
@@ -210,6 +247,9 @@ export function createHud() {
     },
     renderSettings,
     levelChange,
+    call,
+    placeCall,
+    point,
     renderStats,
     renderSummary,
     renderDetail,

@@ -111,3 +111,16 @@ test('feedback et règle à retenir générés à partir des données', () => {
   assert(Q.feedback(r).level === 'ok');
   assert(Q.feedback({ outcome: 'miss', reason: 'early', reasonLabel: 'Trop tôt', bestType: 'volley', bestQuality: 0.9 }, 'Directe').level === 'bad');
 });
+
+test('contexte du double : alignement avec le partenaire, côté couvert, conseil de placement', () => {
+  const d = Q.doublesContext({ x: 7, y: 2.4 }, { x: 3, y: 7.3 }, 'attack');
+  assert(!d.aligned && d.ahead < 0 && Math.abs(d.partnerGap - 4.9) < 1e-9, JSON.stringify(d));
+  assert(/monte avec lui/.test(Q.doublesAdvice(d)), Q.doublesAdvice(d));
+  const ok = Q.doublesContext({ x: 7.2, y: 7.0 }, { x: 2.8, y: 7.3 }, 'attack');
+  assert(ok.aligned && ok.ownSide && Q.doublesAdvice(ok) === '');
+  assert(/ton partenaire couvre/.test(Q.doublesAdvice(Q.doublesContext({ x: 2, y: 2.4 }, { x: 3, y: 2.4 }, 'defense'))));
+  // Le Détail en parle
+  const st = R.createRally({ seed: 2024 });
+  const r = { outcome: 'miss', reason: 'late', reasonLabel: 'Trop tard', bestType: st.shot.best.bestType, bestQuality: st.shot.best.best.quality, doubles: d };
+  assert(Q.explainBall(st.shot, r).lines.some((l) => /Double : ton équipe était au filet/.test(l)));
+});

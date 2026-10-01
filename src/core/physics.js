@@ -1,10 +1,16 @@
 /*
  * Glass Lab — physique pure (aucun accès au DOM).
  *
- * Repère (mètres) — demi-court de défense :
- *   x : largeur, 0 = paroi gauche, 10 = paroi droite
- *   y : profondeur, 0 = vitre de fond, 10 = filet
+ * Repère (mètres) :
+ *   x : largeur, 0 = paroi gauche, 10 = paroi droite (vu depuis le fond du joueur)
+ *   y : profondeur, 0 = vitre de fond du joueur, 10 = filet, 20 = vitre de fond adverse
  *   z : hauteur, 0 = sol
+ *
+ * Deux modes :
+ *   - demi-court (par défaut, historique) : vitre de fond en y = 0, parois latérales ; le filet n'est
+ *     qu'un plan où la simulation s'arrête (balle repartie chez l'adversaire) ;
+ *   - court complet ({ court: 'full' }) : les deux moitiés avec toutes leurs parois, et le filet comme
+ *     obstacle (balle dans le filet, ou qui passe en frôlant la bande).
  *
  * Sans frottement de l'air ni effet, les mouvements en x et y sont rectilignes
  * et z est parabolique : chaque contact est calculé analytiquement (pas
@@ -13,7 +19,8 @@
 
 const COURT = {
   width: 10,
-  depth: 10,
+  depth: 10, // demi-longueur : le filet est en y = 10
+  length: 20,
   serviceLine: 3.05, // depuis la vitre de fond (6,95 m depuis le filet)
   backGlassHeight: 3,
   sideGlass: [ // panneaux de vitre latérale : jusqu'à y = 4 m (3 m de haut), puis 4–6 m (2 m de haut)
@@ -31,6 +38,13 @@ const DEFAULT_PARAMS = {
   eWall: 0.8, // restitution normale sur les parois
   wallTangent: 0.95, // légère perte de vitesse tangentielle sur les parois
   minBounceVz: 0.3, // en dessous, la balle « roule » : fin de simulation
+  // Filet (court complet) : une balle dans le filet est presque arrêtée et retombe de son côté ;
+  // une balle qui frôle la bande passe, ralentie, avec un petit rebond vers le haut.
+  eNet: 0.12,
+  netTangent: 0.3,
+  cordKeep: 0.45,
+  cordSide: 0.7,
+  cordLift: 0.6,
 };
 
 const EPS = 1e-9;
@@ -93,11 +107,21 @@ function reflect(s, type, P) {
     o.vz = -s.vz * P.eFloor;
     o.vx = s.vx * P.floorTangent;
     o.vy = s.vy * P.floorTangent;
-  } else if (type === 'back') {
-    o.y = r;
+  } else if (type === 'back' || type === 'backFar') {
+    o.y = type === 'back' ? r : COURT.length - r;
     o.vy = -s.vy * P.eWall;
     o.vx = s.vx * P.wallTangent;
     o.vz = s.vz * P.wallTangent;
+  } else if (type === 'net') {
+    // Dans le filet : la balle repart à peine et retombe de son côté
+    o.vy = -s.vy * P.eNet;
+    o.vx = s.vx * P.netTangent;
+    o.vz = s.vz * P.netTangent;
+  } else if (type === 'cord') {
+    // Frôle la bande : passe de l'autre côté, ralentie, avec un petit rebond vers le haut
+    o.vy = s.vy * P.cordKeep;
+    o.vx = s.vx * P.cordSide;
+    o.vz = Math.abs(s.vz) * 0.35 + P.cordLift;
   } else if (type === 'left' || type === 'right') {
     o.x = type === 'left' ? r : COURT.width - r;
     o.vx = -s.vx * P.eWall;
@@ -110,11 +134,12 @@ function reflect(s, type, P) {
 /**
  * Simule une trajectoire.
  * @param {{x,y,z,vx,vy,vz}} init état initial
- * @param {object} [opts] { params, tMax, maxFloorBounces }
+ * @param {object} [opts] { params, tMax, maxFloorBounces, court: 'half' (défaut) | 'full' }
  * @returns {{ segments: Array<{t0:number, s:object}>, contacts: Array, endT:number, endReason:string, params:object }}
  */
 function simulate(init, opts) {
   opts = opts || {};
+  if (opts.court === 'full') return simulateFull(init, opts);
   const P = withParams(opts.params);
   const tMax = opts.tMax != null ? opts.tMax : 6;
   const maxFloor = opts.maxFloorBounces != null ? opts.maxFloorBounces : 2;
@@ -165,6 +190,124 @@ function simulate(init, opts) {
     if (stop) break;
   }
   return { segments, contacts, endT: t, endReason, params: P };
+}
+
+/* ---------- Court complet : les deux moitiés et le filet comme obstacle ---------- */
+
+/** Temps avant chaque événement du court complet (Infinity si aucun). */
+function nextEventTimesFull(s, P) {
+  const r = P.radius;
+  const W = COURT.width;
+  const L = COURT.length;
+  const N = COURT.depth;
+  const t = { floor: Infinity, back: Infinity, backFar: Infinity, left: Infinity, right: Infinity, netFace: Infinity, netCross: Infinity };
+  const h = s.z - r;
+  const disc = s.vz * s.vz + 2 * P.g * h;
+  if (disc >= 0) {
+    const tau = (s.vz + Math.sqrt(disc)) / P.g;
+    if (tau > EPS) t.floor = tau;
+  }
+  if (s.vy < 0) t.back = Math.max(0, (r - s.y) / s.vy);
+  if (s.vy > 0) t.backFar = Math.max(0, (L - r - s.y) / s.vy);
+  if (s.vx < 0) t.left = Math.max(0, (r - s.x) / s.vx);
+  if (s.vx > 0) t.right = Math.max(0, (W - r - s.x) / s.vx);
+  // Filet : d'abord la face (la balle touche le plan du filet), puis le passage du centre au-dessus
+  if (s.vy > 0) {
+    if (s.y < N - r - 1e-7) t.netFace = (N - r - s.y) / s.vy;
+    else if (s.y < N - 1e-7) t.netCross = (N - s.y) / s.vy;
+  } else if (s.vy < 0) {
+    if (s.y > N + r + 1e-7) t.netFace = (N + r - s.y) / s.vy;
+    else if (s.y > N + 1e-7) t.netCross = (N - s.y) / s.vy;
+  }
+  return t;
+}
+
+const SURFACES_FULL = ['floor', 'back', 'backFar', 'left', 'right'];
+
+/**
+ * Court complet. Contacts : floor, back (y = 0), backFar (y = 20), left, right, net (dans le filet),
+ * cord (frôle la bande et passe) ; chaque contact porte side = 0 (moitié y < 10) ou 1.
+ * crossings : passages au-dessus du filet { t, x, z, dir (+1 vers y croissants), cord }.
+ */
+function simulateFull(init, opts) {
+  const P = withParams(opts.params);
+  const tMax = opts.tMax != null ? opts.tMax : 8;
+  const maxFloor = opts.maxFloorBounces != null ? opts.maxFloorBounces : 2;
+  const H = COURT.netHeight;
+  let s = Object.assign({}, init);
+  let t = 0;
+  const segments = [{ t0: 0, s: Object.assign({}, s) }];
+  const contacts = [];
+  const crossings = [];
+  let floorCount = 0;
+  let endReason = 'tMax';
+  const push = (type) => {
+    const vIn = { vx: s.vx, vy: s.vy, vz: s.vz };
+    s = reflect(s, type, P);
+    contacts.push({ type, t, pos: { x: s.x, y: s.y, z: s.z }, vIn, vOut: { vx: s.vx, vy: s.vy, vz: s.vz }, side: s.y < COURT.depth ? 0 : 1 });
+  };
+
+  for (let guard = 0; guard < 300; guard++) {
+    const times = nextEventTimesFull(s, P);
+    let tau = Infinity;
+    for (const k in times) tau = Math.min(tau, times[k]);
+    if (t + tau >= tMax) {
+      s = advance(s, tMax - t, P.g);
+      t = tMax;
+      endReason = 'tMax';
+      break;
+    }
+    s = advance(s, tau, P.g);
+    t += tau;
+    let changed = false;
+    let stop = false;
+    if (times.netFace <= tau + EPS) {
+      s.y = s.vy > 0 ? COURT.depth - P.radius : COURT.depth + P.radius;
+      if (s.z <= H) {
+        push('net');
+        changed = true;
+      }
+    } else if (times.netCross <= tau + EPS) {
+      s.y = COURT.depth;
+      const dir = s.vy > 0 ? 1 : -1;
+      const cord = s.z < H + P.radius;
+      if (cord) {
+        push('cord');
+        changed = true;
+      }
+      crossings.push({ t, x: s.x, z: s.z, dir, cord });
+    }
+    // Toutes les surfaces touchées au même instant (coin) sont traitées dans l'ordre.
+    for (const type of SURFACES_FULL) {
+      if (!(times[type] <= tau + EPS)) continue;
+      push(type);
+      changed = true;
+      if (type === 'floor') {
+        floorCount++;
+        if (floorCount >= maxFloor) {
+          endReason = 'floor';
+          stop = true;
+        } else if (s.vz < P.minBounceVz) {
+          endReason = 'rolling';
+          stop = true;
+        }
+      }
+    }
+    if (changed) segments.push({ t0: t, s: Object.assign({}, s) });
+    if (stop) break;
+  }
+  return { segments, contacts, crossings, endT: t, endReason, params: P, full: true };
+}
+
+/** Symétrie centrale du court (échange des deux moitiés) : position et vitesse. */
+function mirrorState(s) {
+  const o = { x: COURT.width - s.x, y: COURT.length - s.y, z: s.z };
+  if (s.vx != null) {
+    o.vx = -s.vx;
+    o.vy = -s.vy;
+    o.vz = s.vz;
+  }
+  return o;
 }
 
 /** État exact à l'instant t (borné à [0, endT]). */
@@ -252,12 +395,12 @@ function hSpeed(v) {
   return Math.hypot(v.vx, v.vy);
 }
 
-/** Vrai si le contact paroi a lieu sur une partie vitrée (sinon grillage / au-dessus). */
+/** Vrai si le contact paroi a lieu sur une partie vitrée (sinon grillage / au-dessus). Deux moitiés. */
 function onGlass(contact) {
   const z = contact.pos.z;
-  if (contact.type === 'back') return z <= COURT.backGlassHeight;
+  if (contact.type === 'back' || contact.type === 'backFar') return z <= COURT.backGlassHeight;
   if (isSide(contact.type)) {
-    const y = contact.pos.y;
+    const y = contact.pos.y > COURT.depth ? COURT.length - contact.pos.y : contact.pos.y;
     return COURT.sideGlass.some((p) => y >= p.from && y <= p.to && z <= p.height);
   }
   return true;
@@ -268,6 +411,7 @@ const Physics = {
   DEFAULT_PARAMS,
   mulberry32,
   simulate,
+  mirrorState,
   stateAt,
   sample,
   advance,

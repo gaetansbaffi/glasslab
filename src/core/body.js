@@ -348,6 +348,15 @@ const STROKES = {
     ],
   },
 };
+/**
+ * En 1re personne, l'accompagnement reste bas et passe devant le buste (jamais devant les yeux) :
+ * on voit la raquette traverser le point de contact puis sortir de l'image.
+ */
+const FP_FOLLOW = {
+  ground: { lat: -0.38, fwd: 0.42, dz: -0.08, axis: [-0.75, 0.55, 0.2] },
+  lob: { lat: -0.3, fwd: 0.45, dz: 0.1, axis: [-0.6, 0.5, 0.6] },
+  volley: { lat: 0.3, fwd: 0.52, dz: -0.18, axis: [0.4, 0.75, 0.45] },
+};
 const STROKE_TIMES = [0, 0.25, 0.55, 1];
 /** Part du geste au moment du contact (pour synchroniser l'animation et la frappe). */
 const CONTACT_AT = 0.55;
@@ -387,7 +396,8 @@ function ballSide(prev, pos, bodyYaw, ball, hysteresis) {
  *   stroke : 'ground' | 'volley' | 'lob' | 'overhead' | 'serve' (prep et swing),
  *   side : côté de la balle (±1, repère du corps),
  *   height : hauteur de contact visée (m), prep : 0–1 (garde → préparation), swing : 0–1 (geste),
- *   aim : { x, y, z } point de contact (facultatif) : le tamis passe par ce point au contact
+ *   aim : { x, y, z } point de contact (facultatif) : le tamis passe par ce point au contact,
+ *   fp : 1re personne (accompagnement bas, loin des yeux)
  * }
  * Retourne { grip, head, dir (axe manche → tête, unitaire), normal (face, unitaire) }.
  */
@@ -407,8 +417,14 @@ function racketPose(o, out) {
   const low = Math.max(0, 0.9 - h) * 1.6;
   const key = (k) => {
     const st = STROKES[o.stroke] || STROKES.ground;
-    const kk = st.keys[k];
+    const kk = o.fp && k === 3 && FP_FOLLOW[o.stroke || 'ground'] ? FP_FOLLOW[o.stroke || 'ground'] : st.keys[k];
     if (st.abs) return { lat: kk.lat * hand, fwd: kk.fwd, z: kk.z, ax: kk.axis[0] * hand, ay: kk.axis[1], az: kk.axis[2] };
+    if (o.fp && k === 3) {
+      // 1re personne : l'accompagnement finit sous le menton ; sur une balle haute, il file vers l'avant
+      // du même côté au lieu de traverser devant les yeux
+      const hi = clamp((h - 1.0) / 0.6, 0, 1);
+      return { lat: (kk.lat + (0.5 - kk.lat) * hi) * b, fwd: kk.fwd + 0.1 * hi, z: Math.min(h + kk.dz, 1.15), ax: (kk.axis[0] + (0.6 - kk.axis[0]) * hi) * b, ay: kk.axis[1], az: kk.axis[2] };
+    }
     return { lat: kk.lat * b, fwd: kk.fwd, z: h + kk.dz, ax: kk.axis[0] * b, ay: kk.axis[1], az: kk.axis[2] - (k < 3 ? low : 0) };
   };
   if (o.mode === 'swing') {

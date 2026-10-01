@@ -68,6 +68,7 @@ function classifyShot(b, cfg) {
 function inZone(b, player, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   if (b.floorBounces >= 2) return false;
+  if (b.y > P.COURT.depth) return false; // la balle n'a pas encore passé le filet : interdit de la jouer
   const type = classifyShot(b, cfg);
   const z = cfg.zones[type];
   if (b.z < z.zMin || b.z > z.zMax) return false;
@@ -177,7 +178,8 @@ function bestChoice(shot, from, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   const dt = cfg.strike.sampleDt;
   const byType = { volley: null, halfVolley: null, beforeGlass: null, afterGlass: null };
-  const t0 = shot.tStart + cfg.player.reactionTime;
+  // Jamais avant le passage du filet (t = 0)
+  const t0 = Math.max(shot.tStart + cfg.player.reactionTime, 0);
   for (let t = t0; t < shot.endT; t += dt) {
     const b = ballStateAt(shot, t);
     if (b.floorBounces >= 2) break;
@@ -194,6 +196,35 @@ function bestChoice(shot, from, cfg) {
   let bestType = null;
   for (const k of SHOT_TYPES) if (byType[k] && (!bestType || byType[k].quality > byType[bestType].quality)) bestType = k;
   return { byType, bestType, best: bestType ? byType[bestType] : null };
+}
+
+/* ---------- Contexte du double ---------- */
+
+/**
+ * Ta position au moment de frapper, par rapport à ton partenaire et à ton côté du court :
+ *   partnerGap : écart de profondeur avec ton partenaire (m) ; aligned : écart ≤ alignTolerance ;
+ *   ahead : > 0 si tu es devant ton partenaire (plus près du filet) ;
+ *   ownSide : tu restes de ton côté (tu couvres la droite du court, x ≥ 4,2 m).
+ * Ne change pas la qualité de la frappe : c'est un conseil de placement dans le double.
+ */
+function doublesContext(pos, partner, teamMode, cfg) {
+  cfg = cfg || DEFAULT_CONFIG;
+  const gap = pos.y - partner.y;
+  return {
+    teamMode,
+    partnerGap: Math.round(Math.abs(gap) * 100) / 100,
+    ahead: Math.round(gap * 100) / 100,
+    aligned: Math.abs(gap) <= cfg.tactics.alignTolerance,
+    ownSide: pos.x >= 4.2,
+  };
+}
+
+/** Conseil de placement dans le double (vide si tout va bien). */
+function doublesAdvice(d) {
+  if (!d) return '';
+  if (!d.aligned) return d.ahead > 0 ? 'tu étais seul devant : recule avec ton partenaire' : 'ton partenaire était au filet : monte avec lui';
+  if (!d.ownSide) return 'tu as quitté ton côté : ton partenaire couvre la gauche';
+  return '';
 }
 
 /* ---------- Feedback et règle à retenir (textes générés à partir des données) ---------- */
@@ -273,6 +304,12 @@ function explainBall(shot, r) {
     const c = clearanceScore(r.ball);
     lines.push(`Ta frappe (${SHOT_NAMES[r.type].toLowerCase()}) : balle à ${fmt(r.ball.z)} m, à ${fmt(c.dist, 1)} m de la paroi, erreur de placement ${fmt(r.placementError)} m.`);
   }
+  if (r && r.doubles) {
+    const d = r.doubles;
+    const where = d.partnerGap < 0.5 ? 'à sa hauteur' : `${fmt(d.partnerGap, 1)} m ${d.ahead > 0 ? 'devant' : 'derrière'} lui`;
+    const advice = doublesAdvice(d);
+    lines.push(`Double : ton équipe était ${d.teamMode === 'attack' ? 'au filet' : 'en défense'}, tu étais ${where}${advice ? ' — ' + advice : ''}.`);
+  }
   // Règle : le meilleur coup, illustré par les chiffres de cette balle
   let rule = RULE_BY_BEST[shot.best.bestType];
   const glass = shot.best.byType.afterGlass;
@@ -303,6 +340,8 @@ const Quality = {
   idealPosition,
   timeMargin,
   bestChoice,
+  doublesContext,
+  doublesAdvice,
   weakness,
   feedback,
   explainBall,

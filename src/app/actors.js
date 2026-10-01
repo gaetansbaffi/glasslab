@@ -112,7 +112,7 @@ export function updateActor(a, f, dt, clock) {
   let twist = 0;
   if (sw) {
     const s = Math.max(0, (clock - sw.t0) / sw.dur);
-    B.racketPose({ pos: a.pos, bodyYaw: a.look.bodyYaw, hand: a.hand, mode: 'swing', stroke: sw.stroke, side: sw.side, height: sw.height, swing: s, aim: sw.aim, crouch: a.crouch }, a.racket);
+    B.racketPose({ pos: a.pos, bodyYaw: a.look.bodyYaw, hand: a.hand, mode: 'swing', stroke: sw.stroke, side: sw.side, height: sw.height, swing: s, aim: sw.aim, crouch: a.crouch, fp: a.fp }, a.racket);
     twist = B.twistFor('swing', sw.side, 0, s);
   } else if (a.prep > 0.01) {
     B.racketPose({ pos: a.pos, bodyYaw: a.look.bodyYaw, hand: a.hand, mode: 'prep', stroke: a.stroke, side: a.side, height: a.height, prep: a.prep, crouch: a.crouch }, a.racket);

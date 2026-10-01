@@ -2,7 +2,7 @@
  * Glass Lab — service worker : cache-first des fichiers locaux, jeu jouable hors ligne après le premier
  * chargement. Changer VERSION pour publier une mise à jour : l'ancien cache est supprimé à l'activation.
  */
-const VERSION = 'glasslab-v4.0.0';
+const VERSION = 'glasslab-v4.1.0';
 const FILES = [
   './',
   './index.html',
@@ -28,13 +28,16 @@ const FILES = [
   './src/view/renderer.js',
   './src/core/body.js',
   './src/core/config.js',
+  './src/core/flight.js',
   './src/core/geometry.js',
+  './src/core/match.js',
   './src/core/physics.js',
   './src/core/players.js',
   './src/core/quality.js',
   './src/core/rally.js',
   './src/core/shotgen.js',
   './src/core/stats.js',
+  './src/core/tactics.js',
 ];
 
 self.addEventListener('install', (event) => {
