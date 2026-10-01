@@ -4,7 +4,8 @@
  * Mobile : le joystick apparaît là où le pouce se pose dans la moitié gauche (droite en mode gaucher) ;
  * le bouton Frappe est un élément séparé, donc les deux se pilotent en même temps (pointerId distincts).
  * PC : ZQSD / WASD / flèches, Espace = Frappe, Échap = Pause, F = plein écran. Pas de capture de souris.
- * Les déplacements sont toujours exprimés par rapport au court (haut = vers le filet), quelle que soit la tête.
+ * Le vecteur rendu est celui du joystick (haut = devant, droite = droite) ; la session le tourne selon le
+ * regard (geometry.viewRelativeMove : haut = devant toi, direction figée pendant la course).
  * Le calcul du vecteur (zone morte, courbe, normalisation) est la fonction pure G.joystickVector.
  */
 import G from './core/geometry.js';
@@ -145,7 +146,7 @@ export function createInput(opts) {
   window.addEventListener('resize', () => joy.id === null && placeGhost());
 
   return {
-    /** Déplacement par rapport au court (norme ≤ 1) : x = vers la droite, y = vers le filet. Jamais lié à la tête. */
+    /** Vecteur du joystick ou du clavier (norme ≤ 1) : x = vers la droite, y = vers le haut (devant). */
     moveVector() {
       if (!cfg.enabled) return { x: 0, y: 0 };
       const k = G.keyboardVector(keys);

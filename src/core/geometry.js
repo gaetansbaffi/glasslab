@@ -168,6 +168,26 @@ function joystickVector(dx, dy, radius, opts) {
 }
 
 /**
+ * Joystick par rapport au regard : haut = droit devant toi (dans la direction regardée), droite = à ta
+ * droite. La direction de référence est figée dès que le pouce pousse franchement (≥ o.lockOn) et tant
+ * qu'il pousse (≥ o.lockOff) : si la caméra tourne pendant la course (elle suit la balle), ta course ne
+ * dévie pas. Pouce relâché ou proche du centre : la référence suit à nouveau le regard.
+ * frame = { ref: lacet figé ou null } (modifié sur place) ; stick = { x, y } (norme ≤ 1) ; viewYaw = lacet
+ * du regard. Retourne la vitesse voulue dans le repère du court (norme ≤ 1).
+ */
+function viewRelativeMove(frame, stick, viewYaw, o) {
+  const m = Math.hypot(stick.x, stick.y);
+  if (frame.ref == null) {
+    if (m >= o.lockOn) frame.ref = viewYaw;
+  } else if (m < o.lockOff) frame.ref = null;
+  const yaw = frame.ref == null ? viewYaw : frame.ref;
+  const s = Math.sin(yaw);
+  const c = Math.cos(yaw);
+  // devant = (sin, cos), droite = (cos, −sin) dans le repère du court
+  return { x: stick.x * c + stick.y * s, y: -stick.x * s + stick.y * c };
+}
+
+/**
  * Entrée clavier → vecteur d'entrée. `keys` contient des KeyboardEvent.code (position physique) :
  * KeyW/KeyA/KeyS/KeyD correspondent à ZQSD sur AZERTY et à WASD sur QWERTY.
  */
@@ -257,6 +277,7 @@ const Geometry = {
   horizontalFov,
   joystickVector,
   keyboardVector,
+  viewRelativeMove,
   ballistic,
   preNetDuration,
 };

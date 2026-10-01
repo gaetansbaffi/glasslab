@@ -112,13 +112,15 @@ const LOOK = {
   neckMax: 80 * DEG, // rotation maximale du cou sans tourner le corps
   neckComfort: 55 * DEG, // au-delà, le corps commence à pivoter
   bodyMax: 115 * DEG, // pivot maximal du corps (se retourner vers la vitre)
-  headHalfLife: 0.05, // inertie de la tête : quelques centièmes de seconde
-  headMaxSpeed: 9, // rad/s : assez vif pour suivre une sortie de vitre qui passe derrière la tête
+  // Tête calme : la caméra ne fouette pas. La balle reste visible au contact parce que le regard se pose
+  // sur le point de frappe juste avant (gazeTarget, focus) au lieu de courir après elle.
+  headHalfLife: 0.08,
+  headMaxSpeed: 4, // rad/s (≈ 230°/s)
+  pitchHalfLife: 0.1,
   bodyHalfLife: 0.09,
   bodyMaxSpeed: 6,
-  pitchHalfLife: 0.06,
   pitchMin: -65 * DEG,
-  pitchMax: 50 * DEG,
+  pitchMax: 40 * DEG, // sur un lob, on lève la tête sans perdre le court de vue
 };
 
 /** Orientation initiale : corps et regard vers `yaw`, tangage `pitch`. */
@@ -170,12 +172,19 @@ function lookStep(look, target, dt, opts) {
  *     visible au moment de frapper ;
  *   - balle derrière soi qui revient (sortie de vitre) : comme un vrai joueur, on regarde déjà là où
  *     elle va arriver (`ahead` = position de la balle `anticipation` secondes plus tard). Tant qu'elle
- *     part vers la vitre, on la suit : l'impact sur la vitre reste visible.
+ *     part vers la vitre, on la suit, mais sans se retourner complètement : au-delà de `maxBack`, on reste
+ *     de profil, du côté où l'on regarde déjà (pas de volte-face d'un côté à l'autre) ; avec un champ de
+ *     108°, l'impact sur la vitre reste en général visible au bord de l'écran ;
+ *   - juste avant de frapper (focus = point de frappe prévu, poids focus.w qui monte de 0 à 1, voir
+ *     focusWeight) : le regard se pose sur le point où la balle va arriver, comme un joueur qui fixe sa
+ *     zone de frappe ; la tête ne court plus après une balle qui file près du corps.
  * look = orientation courante, eye = position des yeux, ball = { x, y, z } ou null, pos = joueur au sol ;
- * o = { deadYaw, basePitch, pitchFollow, nearFrom, nearTo, behindFrom, behindTo, restYaw,
- *       idle: { x, y, z } (point regardé sans balle) } ; ahead = { x, y, z } facultatif.
+ * o = { deadYaw, deadNear, basePitch, pitchFollow, nearFrom, nearTo, behindFrom, behindTo, maxBack, restYaw,
+ *       idle: { x, y, z } (point regardé sans balle) } ; ahead = { x, y, z } facultatif ;
+ * focus = { x, y, z, w } facultatif (point de frappe prévu et poids 0–1).
+ * Retourne { yaw, pitch }.
  */
-function gazeTarget(look, eye, ball, pos, o, ahead) {
+function gazeTarget(look, eye, ball, pos, o, ahead, focus) {
   if (ball && ahead) {
     const rel = Math.abs(wrapAngle(G.lookAngles(eye, ball).yaw - (o.restYaw || 0)));
     const behind = clamp((rel - o.behindFrom) / (o.behindTo - o.behindFrom), 0, 1);
@@ -183,18 +192,45 @@ function gazeTarget(look, eye, ball, pos, o, ahead) {
     const w = approaching ? behind : 0;
     if (w > 0) ball = { x: ball.x + (ahead.x - ball.x) * w, y: ball.y + (ahead.y - ball.y) * w, z: ball.z + (ahead.z - ball.z) * w };
   }
+  if (ball && focus && focus.w > 0) {
+    const w = clamp(focus.w, 0, 1);
+    ball = { x: ball.x + (focus.x - ball.x) * w, y: ball.y + (focus.y - ball.y) * w, z: ball.z + (focus.z - ball.z) * w };
+  }
   const at = ball || o.idle;
   const want = G.lookAngles(eye, at);
   if (!ball) return { yaw: want.yaw, pitch: o.basePitch };
   const dist = Math.hypot(ball.x - pos.x, ball.y - pos.y);
   const far = clamp((dist - o.nearFrom) / (o.nearTo - o.nearFrom), 0, 1); // 0 = proche, 1 = loin
-  const dead = o.deadYaw * (0.12 + 0.88 * far);
+  const nearDead = o.deadNear == null ? 0.12 : o.deadNear;
+  const dead = o.deadYaw * (nearDead + (1 - nearDead) * far);
   const d = wrapAngle(want.yaw - look.gazeYaw);
   let yaw = look.gazeYaw;
   if (d > dead) yaw = want.yaw - dead;
   else if (d < -dead) yaw = want.yaw + dead;
   const follow = o.pitchFollow + (1 - o.pitchFollow) * (1 - far);
-  return { yaw: wrapAngle(yaw), pitch: o.basePitch + (want.pitch - o.basePitch) * follow };
+  return { yaw: wrapAngle(limitBack(yaw, look, o)), pitch: o.basePitch + (want.pitch - o.basePitch) * follow };
+}
+
+/**
+ * Poids du point de frappe dans le regard (0 → 1) selon le temps restant avant la frappe prévue (s) :
+ * 0 au-delà de `o.focusTo`, 1 dans les dernières `o.focusFrom` secondes (et après), progressif entre les deux.
+ */
+function focusWeight(timeToContact, o) {
+  if (timeToContact == null || !isFinite(timeToContact)) return 0;
+  return clamp((o.focusTo - timeToContact) / (o.focusTo - o.focusFrom), 0, 1);
+}
+
+/** Regard limité à ±maxBack du repos (de profil au plus), du côté où la tête est déjà tournée. */
+function limitBack(yaw, look, o) {
+  if (!o.maxBack) return yaw;
+  const rest = o.restYaw || 0;
+  const rel = wrapAngle(yaw - rest);
+  if (Math.abs(rel) <= o.maxBack) return yaw;
+  // Balle presque dans le dos (à moins de ≈ 30°) : les deux côtés se valent, on garde celui de la tête
+  const cur = wrapAngle(look.gazeYaw - rest);
+  const nearBack = Math.abs(rel) > Math.PI - 0.5;
+  const side = nearBack && Math.abs(cur) > 0.35 ? Math.sign(cur) : Math.sign(rel) || 1;
+  return rest + side * o.maxBack;
 }
 
 /** Direction du regard (vecteur unitaire monde). */
@@ -663,6 +699,7 @@ const Body = {
   BODY,
   RACKET,
   LOOK,
+  focusWeight,
   STROKES,
   CONTACT_AT,
   JOINTS,

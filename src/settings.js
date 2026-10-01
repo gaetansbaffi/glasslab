@@ -1,7 +1,7 @@
 /*
  * Glass Lab — réglages : un seul mode de jeu, trois réglages au total (son et vibration, mode gaucher,
  * données). Tout le reste est fixé par le jeu : vue 1re personne, champ de vision, déplacements par rapport
- * au court, aides visuelles discrètes, difficulté et vitesse adaptatives, qualité graphique automatique,
+ * au regard, aides visuelles discrètes, difficulté et vitesse adaptatives, qualité graphique automatique,
  * mouvements réduits selon le système (prefers-reduced-motion).
  */
 

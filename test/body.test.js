@@ -243,7 +243,8 @@ test('squelette : proportions humaines, pieds au sol, genoux vers l’avant, fou
 });
 
 test('la balle reste visible au moment de frapper (regard qui suit la balle, champ du jeu)', () => {
-  // Joueur parfait sur de vraies balles : la tête suit la balle avec gazeTarget + lookStep
+  // Joueur parfait sur de vraies balles : la tête (calme) suit la balle avec gazeTarget + lookStep et se pose
+  // sur le point de frappe juste avant de frapper (focusWeight), comme dans le jeu
   const f = fovs(2.17);
   let checked = 0;
   let visible = 0;
@@ -256,7 +257,8 @@ test('la balle reste visible au moment de frapper (regard qui suit la balle, cha
       const ball = R.ballPosition(st);
       const ahead = Q.ballStateAt(shot, Math.min(st.t + V.anticipation, shot.endT));
       const eye = B.eyePosition(st.player, look, 0, 0);
-      look = B.lookStep(look, B.gazeTarget(look, eye, ball, st.player, Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V), ahead), DT);
+      const focus = { x: best.ball.x, y: best.ball.y, z: best.ball.z, w: B.focusWeight(best.t - st.t, V) };
+      look = B.lookStep(look, B.gazeTarget(look, eye, ball, st.player, Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V), ahead, focus), DT);
       if (st.t <= best.t && st.t + DT > best.t) {
         checked++;
         if (G.inView(B.eyePosition(st.player, look, 0, 0), look.gazeYaw, look.gazePitch, ball, f.h, f.v, 0.05)) visible++;
@@ -266,6 +268,30 @@ test('la balle reste visible au moment de frapper (regard qui suit la balle, cha
   }
   assert(checked >= 100, 'contacts observés : ' + checked);
   assert(visible === checked, `balle hors champ au contact : ${checked - visible} / ${checked}`);
+});
+
+test('caméra calme : jamais au-delà du profil, sans volte-face, regard posé sur le point de frappe', () => {
+  const opts = Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V);
+  const eye = { x: 5, y: 3, z: 1.65 };
+  const pos = { x: 5, y: 3 };
+  // Balle dans le dos : le regard s'arrête de profil (maxBack), du côté où la tête est déjà tournée
+  let look = B.createLook(0, V.basePitch);
+  for (let k = 0; k < 240; k++) look = B.lookStep(look, B.gazeTarget(look, eye, { x: 5.3, y: 0.5, z: 1 }, pos, opts), DT);
+  near(Math.abs(look.gazeYaw), V.maxBack, 1e-3, 'de profil au plus');
+  const side = Math.sign(look.gazeYaw);
+  // La balle passe de l'autre côté, juste derrière : la tête ne repasse pas par l'avant
+  for (let k = 0; k < 120; k++) look = B.lookStep(look, B.gazeTarget(look, eye, { x: 4.7, y: 0.5, z: 1 }, pos, opts), DT);
+  assert(Math.sign(look.gazeYaw) === side && Math.abs(look.gazeYaw) > V.maxBack - 0.05, 'pas de volte-face');
+  // Vitesse de la tête bornée (≈ 230°/s)
+  assert(B.LOOK.headMaxSpeed <= 4 + 1e-9, 'tête calme');
+  // Juste avant de frapper, le regard vise le point de frappe, pas la balle
+  look = B.createLook(0, V.basePitch);
+  const focus = { x: 6.2, y: 3.4, z: 1.0, w: B.focusWeight(0.1, V) };
+  near(focus.w, 1, 1e-12, 'poids plein dans les 0,3 dernières secondes');
+  near(B.focusWeight(2, V), 0, 1e-12, 'aucun poids loin du contact');
+  const t = B.gazeTarget(look, eye, { x: 2, y: 8, z: 2 }, pos, opts, null, focus);
+  const want = G.lookAngles(eye, focus);
+  near(t.yaw, want.yaw, 0.03, 'regard vers le point de frappe');
 });
 
 test('1re personne : pendant ton geste, la main et la raquette ne passent jamais devant tes yeux', () => {

@@ -15,7 +15,7 @@ Conçu **mobile d'abord** (plein écran, deux pouces, paysage conseillé), jouab
 | Pause | bouton en haut à droite | Échap |
 | Plein écran | accueil et pause | F |
 
-- **Déplacements par rapport au court**, toujours : haut = vers le filet, bas = vers ta vitre de fond, gauche / droite = le long du filet. Ils ne dépendent jamais de la direction de ta tête.
+- **Déplacements par rapport à ce que tu regardes** : haut = droit devant toi, bas = en arrière, gauche / droite = de côté. Dès que ton pouce pousse franchement, la direction est **figée tant qu'il pousse** : si la caméra tourne pour suivre la balle, ta course ne dévie pas. Relâche (ou ramène le pouce au centre) pour repartir dans la direction regardée.
 - **C'est le moment de l'appui qui décide du coup** : volée (avant le rebond), demi-volée (juste après le rebond, balle basse et montante), avant vitre, après vitre. Si la balle est dans ta zone de frappe à ±250 ms près, elle est renvoyée automatiquement (on entraîne la décision, pas le geste) : plus la qualité est haute, plus le renvoi est profond et rapide. Du fond face à des adversaires au filet, un bon coup part en lob.
 - **Ton service** : quand c'est ton tour, une invite s'affiche ; Frappe lâche la balle, qui rebondit et part à la cuillère en diagonale.
 - Après chaque balle : un message court (coup joué, qualité de 0 à 1, meilleur choix). Après une erreur, **Détail** rejoue la balle au ralenti (vue 1re personne, de dessus ou de côté), avec la trajectoire, le meilleur point de frappe et une règle à retenir.
@@ -23,7 +23,7 @@ Conçu **mobile d'abord** (plein écran, deux pouces, paysage conseillé), jouab
 ## En 1re personne, dans un corps
 
 - **Tes yeux** sont à ≈ 1,65 m et tournent autour de ton cou ; champ de vision fixé par le jeu : 108° en paysage (vertical ≥ 60°), adapté en portrait.
-- **Tête et corps séparés** : ta tête suit la balle (lissage de quelques centièmes de seconde, zone morte quand la balle est loin, aucun roulis) ; ton cou tourne jusqu'à ±80°, puis ton corps pivote progressivement quand la balle passe derrière toi, vers la vitre. Sur une sortie de vitre qui revient, ton regard anticipe là où la balle arrive : elle reste visible au moment de frapper.
+- **Tête et corps séparés, caméra calme** : ta tête suit la balle sans à-coups (au plus ≈ 230°/s, zone morte quand la balle est loin, aucun roulis) ; ton cou tourne jusqu'à ±80°, puis ton corps pivote. Quand la balle part vers ta vitre de fond, tu te mets **de profil** (au plus ≈ 92° du filet) au lieu de te retourner : l'impact reste au bord de l'écran et la balle revient dans le champ. **Juste avant de frapper, ton regard se pose sur le point de frappe** : la balle y arrive, visible au contact, sans que la tête coure après elle.
 - **Ton corps** est visible : buste, bras, jambes, pieds, et ton ombre sur le court devant toi. Tes bras sont animés en cinématique inverse : ta main tient la raquette, en garde en bas de l'écran ; quand la balle arrive, la raquette se présente du côté de la balle, à distance de frappe (elle matérialise ta portée) ; le geste part vers la balle à l'appui.
 - **Aides discrètes, toujours actives** : balle grossie ≈ 2× avec contour, ombre ronde à sa verticale et trait jusqu'au sol, anneau de portée à tes pieds. Pas de trajectoire pendant le jeu.
 
@@ -79,7 +79,7 @@ Un serveur HTTP est nécessaire (modules ES, service worker). Sur un téléphone
 node test/run.js
 ```
 
-Node ≥ 18, sans librairie : **109 tests**. Ils couvrent la physique (demi-court historique et court complet : aucune traversée des parois ni du filet, symétrie, filet et bande), les effets (effet nul = trajectoire identique, lift / coupé / latéral en vol, au rebond et à la vitre, lancer qui compense l'effet, effet de chaque coup), le corps (cou limité à ±80°, pivot du corps, yeux, cinématique inverse, main sur la raquette, garde visible, geste jamais devant les yeux, **balle visible au contact sur 109 frappes simulées**), les déplacements (accélération, freinage, réaction, split-step), la qualité et le meilleur choix, la génération des balles (familles, styles, vitesses), l'échange historique, la tactique (positions, transitions, qui prend la balle, interception, choix du coup, fautes, ton renvoi), le score et le service (formats de match, super jeu décisif, enjeux, annonces, reprise), la partie à 4 (fin de match, reprise) (déterminisme, 1 appui, part des balles vers toi, IA à temps et légales, continuité de la balle, **calibrage sur le tableau du brief**), les stats, la migration de la sauvegarde et la **pureté de `src/core`** (ni DOM ni Three.js).
+Node ≥ 18, sans librairie : **111 tests**. Ils couvrent la physique (demi-court historique et court complet : aucune traversée des parois ni du filet, symétrie, filet et bande), les effets (effet nul = trajectoire identique, lift / coupé / latéral en vol, au rebond et à la vitre, lancer qui compense l'effet, effet de chaque coup), le corps (cou limité à ±80°, pivot du corps, yeux, cinématique inverse, main sur la raquette, garde visible, geste jamais devant les yeux, **balle visible au contact sur 120 frappes simulées**, caméra jamais au-delà du profil, sans volte-face), les déplacements (joystick par rapport au regard avec direction figée pendant la course, accélération, freinage, réaction, split-step), la qualité et le meilleur choix, la génération des balles (familles, styles, vitesses), l'échange historique, la tactique (positions, transitions, qui prend la balle, interception, choix du coup, fautes, ton renvoi), le score et le service (formats de match, super jeu décisif, enjeux, annonces, reprise), la partie à 4 (fin de match, reprise) (déterminisme, 1 appui, part des balles vers toi, IA à temps et légales, continuité de la balle, **calibrage sur le tableau du brief**), les stats, la migration de la sauvegarde et la **pureté de `src/core`** (ni DOM ni Three.js).
 
 ## Architecture
 
@@ -119,6 +119,8 @@ tools/make-icons.js       génère les icônes PWA
 | `ai.speed` / `reaction` | 5,5 m/s · 0,22 s | IA : sprint, réaction (split-step compris) |
 | `view.hFov` / `vFovMin` | 108° · 60° | champ de vision fixe |
 | `view.deadYaw` / `anticipation` | 0,22 rad · 0,22 s | regard calme, anticipation des sorties de vitre |
+| `view.maxBack` / `focusFrom`–`focusTo` | 1,6 rad · 0,3–0,8 s | de profil au plus ; regard posé sur le point de frappe juste avant de frapper |
+| `controls.lockOn` / `lockOff` | 0,45 · 0,3 | joystick : direction figée au-delà, libérée en deçà |
 | `strike.timingTolerance` | ±0,25 s | fenêtre de frappe |
 | `zones.*`, `quality.*`, `placement.*` | voir fichier | zones de frappe, poids de la qualité, placement idéal |
 | `styles.*` | voir fichier | coups des 4 joueurs : hauteur au filet ou vitesse, profondeur, km/h admis, hauteur max |
@@ -140,7 +142,7 @@ tools/make-icons.js       génère les icônes PWA
 - **La frappe n'est pas un contact raquette-balle** : elle est jugée sur ta position et le moment d'appui ; la raquette dessinée est un indicateur de portée.
 - **Tu ne choisis ni la direction ni le type de ton renvoi** : il est automatique (lob, balle de fond ou volée selon la situation et ta qualité). Tu n'as pas de smash : une balle trop haute se joue après le rebond.
 - **Heuristiques non calibrées avec des entraîneurs** : qualité, meilleur choix, choix des coups et fautes des IA, part des balles vers toi. Les vitesses sont des ordres de grandeur, vérifiés par un test.
-- **Déplacements par rapport au court** : quand tu regardes vers ta vitre de fond, pousser le joystick vers le haut t'éloigne de ce que tu regardes (c'est voulu, mais peut dérouter).
+- **Joystick par rapport au regard** : tant que ton pouce pousse, la direction reste celle du moment où tu as commencé ; si la caméra a beaucoup tourné entre-temps, relâche pour repartir dans la direction regardée.
 - **Ton service** est toujours bon et en diagonale ; on ne change pas de côté aux jeux impairs (tu restes en bas, le court est symétrique).
 - Les IA ne se gênent pas physiquement et ne communiquent que sur les balles au centre ; le partenaire s'aligne sur toi si tu restes au fond.
 - La génération d'une balle se fait au moment de la frappe adverse (≈ 0,4 ms en médiane, jusqu'à ≈ 9 ms au pire sur PC).

@@ -37,7 +37,14 @@ const CONFIG = {
     anticipation: 0.22, // balle derrière soi qui revient : on regarde où elle sera dans 0,22 s
     behindFrom: 1.4, // « derrière » commence à 80° du filet (rad)…
     behindTo: 2.27, // … et l'est complètement à 130°
+    maxBack: 1.6, // le regard ne se retourne pas au-delà de ≈ 92° du filet : on se met de profil, la vitre reste au bord du champ
+    focusFrom: 0.3, // dans les 0,3 dernières secondes avant la frappe prévue, le regard est posé sur le point de frappe…
+    focusTo: 0.8, // … et s'y déplace progressivement à partir de 0,8 s avant
   },
+
+  // Joystick par rapport à ce que tu regardes. La direction est figée dès que le pouce pousse franchement
+  // (≥ lockOn) et tant qu'il pousse (≥ lockOff) : la caméra peut tourner sans faire dévier ta course.
+  controls: { lockOn: 0.45, lockOff: 0.3 },
 
   strike: {
     timingTolerance: 0.25, // ± tolérance entre l'appui sur « Frappe » et le passage dans la zone (s)

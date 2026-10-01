@@ -4,6 +4,7 @@
  * (vert) et ta frappe (orange). Seul endroit où la trajectoire complète et le meilleur point sont montrés.
  */
 import CFG from '../core/config.js';
+import B from '../core/body.js';
 import G from '../core/geometry.js';
 import P from '../core/physics.js';
 import Q from '../core/quality.js';
@@ -25,7 +26,8 @@ export function createReplay({ renderer, user }) {
   const best = { bx: 0, by: 0, bz: 0, px: 0, py: 0 };
   const mine = { bx: 0, by: 0, bz: 0 };
   const view = { ball: ballPos, reach: null, pathT: 0, best, mine: null };
-  const frameIn = { x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, incoming: null, hop: 0, crouchScale: 0.4 };
+  const frameIn = { x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, focus: null, incoming: null, hop: 0, crouchScale: 0.4 };
+  const focus = { x: 0, y: 0, z: 0, w: 0 };
   const fpCam = { eye: user.eye, yaw: 0, pitch: 0, vFov: 70 };
   const fixedCam = { eye: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 }, vFov: 50, topDown: false };
   const shift = { x: 0, y: 0 };
@@ -78,6 +80,8 @@ export function createReplay({ renderer, user }) {
     frameIn.y = r.player.y;
     frameIn.ball = ballPos;
     frameIn.ahead = Q.ballStateAt(shot, Math.min(rp.t + CFG.view.anticipation, shot.endT));
+    Object.assign(focus, { x: bb.ball.x, y: bb.ball.y, z: bb.ball.z, w: B.focusWeight(bb.t - rp.t, CFG.view) });
+    frameIn.focus = focus;
     updateActor(user, frameIn, dt * REPLAY_SPEED, 0);
     if (rp.cam === 'fp') {
       fpCam.yaw = user.look.gazeYaw;

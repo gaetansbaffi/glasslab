@@ -45,6 +45,7 @@ export function createGame(ctx) {
     screen: 'home', // home | playing | paused | detail | over (fin de match)
     endTimer: 0,
     lastReason: '',
+    moveFrame: { ref: null }, // joystick par rapport au regard : direction figée pendant la course
     cur: null,
     prev: null,
     acc: 0,
@@ -332,7 +333,8 @@ export function createGame(ctx) {
   const ballPos = { x: 0, y: 0, z: 0 };
   const view = { ball: null, reach: null, pathT: null, best: null, mine: null };
   const cam = { eye: user.eye, yaw: 0, pitch: 0, vFov: 70 };
-  const frames = actors.map((a, i) => ({ x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, incoming: null, hop: 0, crouchScale: i === 0 ? 0.4 : 1, lookAt: null, offHand: null }));
+  const frames = actors.map((a, i) => ({ x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, focus: null, incoming: null, hop: 0, crouchScale: i === 0 ? 0.4 : 1, lookAt: null, offHand: null }));
+  const userFocus = { x: 0, y: 0, z: 0, w: 0 }; // point de frappe prévu, regardé juste avant de frapper
   const receiverHead = { x: 0, y: 0, z: 1.5 };
   const incomings = actors.map(() => ({ t: 0, z: 1, x: 0, y: 0 }));
   const callPos = { x: 0, y: 0, visible: false };
@@ -430,6 +432,12 @@ export function createGame(ctx) {
       const fu = frames[0];
       fu.incoming = null;
       const u = M.userShot(s);
+      fu.focus = null;
+      if (u) {
+        const bb = u.shot.best.best;
+        Object.assign(userFocus, { x: bb.ball.x, y: bb.ball.y, z: bb.ball.z, w: B.focusWeight(bb.t - u.t, CFG.view) });
+        fu.focus = userFocus;
+      }
       if (u && ball) {
         fu.ahead = Q.ballStateAt(u.shot, Math.min(u.t + CFG.view.anticipation, u.shot.endT));
         const d = Math.hypot(ball.x - fu.x, ball.y - fu.y);
@@ -466,9 +474,10 @@ export function createGame(ctx) {
 
   function frame(dt, aspect) {
     if (game.screen === 'playing') {
-      game.move = input.moveVector(); // par rapport au court : haut = vers le filet
+      // Joystick par rapport à ce que tu regardes (haut = devant toi), direction figée pendant la course
+      game.move = G.viewRelativeMove(game.moveFrame, input.moveVector(), user.look.gazeYaw, CFG.controls);
       if (input.consumeStrike()) game.strike = true;
-      const bot = game.debugInput; // tests en navigateur sans affichage (?debug=1) uniquement
+      const bot = game.debugInput; // tests en navigateur sans affichage (?debug=1) : vecteur dans le repère du court
       if (bot) {
         game.move = bot.move || game.move;
         if (bot.strike) game.strike = true;

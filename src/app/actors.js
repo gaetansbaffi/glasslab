@@ -44,9 +44,9 @@ export function createActor(o) {
 
 /** Réglages de mouvement réduits (prefers-reduced-motion) : tête et corps plus lents. */
 export function setReducedMotion(a, on) {
-  a.lookOpts.headMaxSpeed = on ? 5 : B.LOOK.headMaxSpeed;
+  a.lookOpts.headMaxSpeed = on ? 3 : B.LOOK.headMaxSpeed;
   a.lookOpts.bodyMaxSpeed = on ? 3.5 : B.LOOK.bodyMaxSpeed;
-  a.lookOpts.headHalfLife = on ? 0.1 : B.LOOK.headHalfLife;
+  a.lookOpts.headHalfLife = on ? 0.12 : B.LOOK.headHalfLife;
 }
 
 /** Repositionne instantanément (nouvelle partie, Détail) et remet le regard vers le filet. */
@@ -96,7 +96,8 @@ export function updateActor(a, f, dt, clock) {
   // Regard : la tête suit la balle (yeux à la hauteur courante), le corps pivote si besoin ;
   // f.lookAt impose un point (le serveur regarde le receveur, pas la balle qu'il tient)
   B.eyePosition(a.pos, a.look, a.crouch * (f.crouchScale == null ? 1 : f.crouchScale), a.hop, a.eye);
-  a.look = B.lookStep(a.look, B.gazeTarget(a.look, a.eye, f.lookAt || f.ball, a.pos, a.gazeOpts, f.lookAt ? null : f.ahead), dt, a.lookOpts);
+  // Regard : la balle (ou le point de frappe prévu juste avant de frapper), ou ce que le joueur fixe
+  a.look = B.lookStep(a.look, B.gazeTarget(a.look, a.eye, f.lookAt || f.ball, a.pos, a.gazeOpts, f.lookAt ? null : f.ahead, f.lookAt ? null : f.focus), dt, a.lookOpts);
 
   // Côté de la balle (coup droit / revers) et préparation
   if (f.ball) a.side = B.ballSide(a.side, a.pos, a.look.bodyYaw, f.incoming || f.ball, 0.2);

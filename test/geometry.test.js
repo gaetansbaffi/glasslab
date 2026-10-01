@@ -177,3 +177,38 @@ test('champ de vision d’une caméra : coordonnées caméra et visibilité d’
   assert(!G.inView(eye, 0, 0, { x: 8.5, y: 6, z: 1.65 }, 90, 65), 'hors d’un champ de 90°');
   near(G.horizontalFov(G.verticalFov(108, 2.17, 10, 170), 2.17), 108, 1e-9, 'champs horizontal ↔ vertical');
 });
+
+test('joystick par rapport au regard : haut = devant toi, direction figée pendant la course', () => {
+  const o = { lockOn: 0.45, lockOff: 0.3 };
+  // Regard vers le filet : identique au repère du court
+  let f = { ref: null };
+  let v = G.viewRelativeMove(f, { x: 0.2, y: 0.3 }, 0, o);
+  near(v.x, 0.2, 1e-12);
+  near(v.y, 0.3, 1e-12);
+  // Regard vers la paroi de droite (+x) : haut = vers +x, droite = vers le fond (−y)
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 0, y: 1 }, Math.PI / 2, o);
+  near(v.x, 1, 1e-12);
+  near(v.y, 0, 1e-12);
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 1, y: 0 }, Math.PI / 2, o);
+  near(v.x, 0, 1e-12);
+  near(v.y, -1, 1e-12);
+  // Regard vers ta vitre de fond : haut = vers la vitre
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 0, y: 1 }, Math.PI, o);
+  near(v.y, -1, 1e-12);
+  // Course engagée regard au filet, puis la caméra tourne de 100° : la course ne dévie pas
+  f = { ref: null };
+  G.viewRelativeMove(f, { x: 0, y: 1 }, 0, o);
+  v = G.viewRelativeMove(f, { x: 0, y: 1 }, (100 * Math.PI) / 180, o);
+  near(v.x, 0, 1e-12, 'direction figée');
+  near(v.y, 1, 1e-12, 'direction figée');
+  // Pouce presque au centre : la référence suit de nouveau le regard
+  v = G.viewRelativeMove(f, { x: 0, y: 0.2 }, Math.PI / 2, o);
+  assert(f.ref === null && Math.abs(v.x - 0.2) < 1e-12, 'référence libérée');
+  // Norme conservée
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 0.6, y: -0.8 }, 2.1, o);
+  near(Math.hypot(v.x, v.y), 1, 1e-12);
+});

@@ -21,7 +21,7 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 | 4. Effets de balle (demande après publication) | `4cafdb1` | coupé, lift, latéral en vol et aux rebonds ; effet par coup ; balle qui tourne ; étiquette et Détail |
 | 5. Vrai système de points (demande après publication) | `eff478a` | formats 1 set / 2 sets gagnants, super jeu décisif, fin de match, tableau de score, annonces, reprise |
 
-`node test/run.js` : **109 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
+`node test/run.js` : **111 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
 
 ## 3. Critères d'acceptation du brief (§9)
 
@@ -39,8 +39,10 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 
 - **Yeux** à 1,65 m, en avant du pivot du cou, qui tournent avec la tête : en regardant vers le bas, ils avancent et descendent comme dans un vrai corps (`body.eyePosition`).
 - **Champ de vision fixe** : 108° horizontal en paysage (téléphone 19,5:9 → 64,8° vertical ; 16:9 → 75°), vertical entre 60° et 100°, horizontal réduit en portrait.
-- **Tête et corps séparés** (`body.lookStep`) : regard lissé (demi-vie 0,05 s, au plus 9 rad/s), cou limité à ±80°, le corps ne pivote qu'au-delà de 55° et jusqu'à 115°. Les angles sont « déroulés » : la tête ne reste jamais bloquée en revenant d'une balle passée derrière. Aucun roulis.
-- **Regard qui suit la balle** (`body.gazeTarget`) : zone morte et suivi partiel quand la balle est loin, suivi serré quand elle approche ; sur une sortie de vitre qui revient, anticipation de 0,22 s. Mesure sur 109 frappes simulées : sans anticipation, 23 balles hors du champ au contact (tête limitée à 7 rad/s) ou 16 (à 9 rad/s) ; avec anticipation et 9 rad/s, **0 sur 109**, et l'impact sur la vitre reste visible 79 % du temps (contre 84 % sans anticipation).
+- **Tête et corps séparés** (`body.lookStep`) : regard lissé (demi-vie 0,08 s, au plus 4 rad/s ≈ 230°/s), cou limité à ±80°, le corps ne pivote qu'au-delà de 55° et jusqu'à 115°. Les angles sont « déroulés » : la tête ne reste jamais bloquée en revenant d'une balle passée derrière. Aucun roulis.
+- **Regard qui suit la balle** (`body.gazeTarget`) : zone morte et suivi partiel quand la balle est loin, suivi serré quand elle approche ; sur une sortie de vitre qui revient, anticipation de 0,22 s ; **de profil au plus** (≈ 92° du filet, sans volte-face d'un côté à l'autre) ; **regard posé sur le point de frappe** dans la dernière seconde avant la frappe prévue.
+- **Caméra calmée après retour du joueur** (« la caméra est compliquée, elle fait des trucs bizarres avec le déplacement »). Mesures sur 360 balles simulées (3 séries de 120), avant → après : grands pivots (> 90° en 1 s) 93 à 104 → 31 à 38 par série (≈ −65 %) ; vitesse maximale de la tête 516 → 229°/s ; temps passé à tourner vite (> 3 rad/s) ≈ 25 % → ≈ 15 % ; balle hors champ au contact 5 → **0 sur 360**. En partie dans le navigateur : regard à plus de 100° du filet 6–8 % → 0 % du temps.
+- **Joystick par rapport au regard** (`geometry.viewRelativeMove`), à la place du repère du court imposé par le brief : haut = devant soi ; direction figée dès que le pouce pousse franchement et tant qu'il pousse, pour que la rotation de la caméra ne fasse pas dévier la course.
 - **Corps** : 16 pièces low-poly par joueur ; buste, bras, jambes et pieds visibles en regardant vers le bas ; ton ombre portée devant toi (soleil derrière ton équipe).
 - **Bras et raquette** : cinématique inverse à deux segments, la main tient la prise (test sur toutes les poses). Garde : haut du cadre visible en bas de l'écran, entre le centre et le bouton Frappe. Préparation : le tamis se présente du côté de la balle, à 0,45–0,85 m (la portée idéale). Geste synchronisé avec le contact ; en 1re personne, la main et la raquette restent à plus de 0,3 m des yeux (test).
 - **Lisibilité** : balle 2×, contour, ombre ronde, trait vers le sol, anneau de portée.
@@ -105,7 +107,7 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 - **Pas de changement de côté** aux jeux impairs (court symétrique, tu restes en bas).
 - **Pas de contact raquette-balle** : la frappe est jugée sur la position et le moment d'appui.
 - **Heuristiques non calibrées avec des entraîneurs** : qualité, meilleur choix, choix des coups et fautes des IA.
-- **Déplacements par rapport au court** : quand tu regardes vers ta vitre, « haut » t'éloigne de ce que tu regardes. Le brief l'impose ; à surveiller dans les retours.
+- **Joystick par rapport au regard** (choix du joueur, contre le brief) : la direction reste figée tant que le pouce pousse ; après une grande rotation de la caméra, il faut relâcher pour repartir dans la direction regardée.
 - **Pas de smash pour toi** : une balle au-dessus de 2 m se joue après le rebond.
 - **`src/core` alloue de petits objets à chaque pas** (états immuables, 4 joueurs) ; la génération d'une balle à la frappe adverse coûte ≈ 0,4 ms en médiane et jusqu'à ≈ 9 ms au pire sur PC (≈ 4 fois plus sur téléphone : une image sautée possible, rarement).
 - `rally.js` (duel d'origine) n'est plus utilisé par le jeu ; il est conservé car testé et réutilisé (motifs de perte).
@@ -115,7 +117,8 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 
 1. Ouverture → Jouer → premier service : 1 appui, plein écran et paysage (Android), installation PWA (Android et iOS), lancement hors ligne.
 2. Joystick et Frappe en même temps, aucun zoom, scroll ou menu contextuel ; mode gaucher.
-3. **Confort de la 1re personne** : aucune nausée sur 5 minutes en paysage ; rotation de la tête quand la balle passe derrière soi ; court fondu entre les points.
+3. **Confort de la 1re personne** : aucune nausée sur 5 minutes en paysage ; caméra calme (de profil au plus quand la balle passe derrière) ; regard posé sur le point de frappe juste avant de frapper ; court fondu entre les points.
+3 bis. **Joystick par rapport au regard** : haut = devant soi ; la course ne dévie pas quand la caméra tourne ; relâcher pour repartir dans la direction regardée.
 4. **Lisibilité** : juger sa position par rapport à la balle (ombre, trait, anneau, raquette présentée) au moins aussi bien qu'en vue épaule à 110° ; balle visible au moment de frapper.
 5. Garde : haut de la raquette visible sans masquer le jeu ni être caché par le bouton Frappe ; ses bras et ses jambes en regardant vers le bas.
 6. Cadence : 60 i/s visés (`?debug=1`) ; que la résolution dynamique et la coupure des ombres suffisent.
