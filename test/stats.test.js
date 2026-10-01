@@ -4,6 +4,7 @@
 import { test, assert, near, section } from './harness.js';
 import CFG from '../src/core/config.js';
 import Stats from '../src/core/stats.js';
+import SC from '../src/core/score.js';
 import R from '../src/core/rally.js';
 
 const DEFAULTS = { speed: 1, auto: false, showPath: false, showBest: true, sound: true, lefty: false };
@@ -101,7 +102,7 @@ test('migration : version 2 (duel) → version 3, réglages supprimés abandonn�
   assert(JSON.stringify(s.record) === JSON.stringify(Stats.emptyRecord()), 'bilan vierge');
   // Bilan d'une version 3 relu, valeurs invalides remises à zéro
   const v3 = Stats.migrate({ version: 3, record: { points: [12, 'x'], games: [3, -2], sets: 'non' } }, { sound: true }).state;
-  assert(JSON.stringify(v3.record) === JSON.stringify({ points: [12, 0], games: [3, 0], sets: [0, 0] }), JSON.stringify(v3.record));
+  assert(JSON.stringify(v3.record) === JSON.stringify({ points: [12, 0], games: [3, 0], sets: [0, 0], matches: [0, 0] }), JSON.stringify(v3.record));
 });
 
 test('migration : données corrompues ou inconnues → état vierge, sans exception', () => {
@@ -134,4 +135,21 @@ test('double : part des frappes jouées aligné avec le partenaire', () => {
   const d = Stats.doublesStats([ball({ aligned: true }), ball({ aligned: false }), ball({ aligned: true }), ball({})]);
   assert(d.n === 3 && Math.abs(d.aligned - 2 / 3) < 1e-12, JSON.stringify(d));
   assert(Stats.doublesStats([]).aligned === null);
+});
+
+test('match en cours et format : sauvegardés, relus, refusés s’ils sont invalides ou terminés', () => {
+  const st = Object.assign(Stats.createState(DEFAULTS), { format: '3sets' });
+  let sc = SC.createScore({ bestOf: 3, superTiebreak: true });
+  for (let i = 0; i < 9; i++) sc = SC.pointWon(sc, i % 3 ? 0 : 1).score;
+  st.current = { format: '3sets', score: sc, pointsWon: [6, 3], at: 1700000000000 };
+  const back = Stats.importState(JSON.stringify(st), DEFAULTS);
+  assert(back.format === '3sets' && back.current && back.current.format === '3sets', 'format et match relus');
+  assert(JSON.stringify(back.current.score) === JSON.stringify(sc) && back.current.pointsWon.join('-') === '6-3', 'score identique');
+  // Match terminé, format inconnu ou score illisible : pas de reprise
+  let done = SC.createScore({ bestOf: 1 });
+  for (let i = 0; i < 24; i++) done = SC.pointWon(done, 0).score;
+  assert(done.winner === 0 && Stats.cleanCurrent({ format: '1set', score: done }) === null, 'match terminé');
+  assert(Stats.cleanCurrent({ format: '5sets', score: sc }) === null && Stats.cleanCurrent({ format: '1set', score: { points: 'x' } }) === null, 'invalide');
+  const old = Stats.migrate({ version: 3, balls: [] }, DEFAULTS).state;
+  assert(old.format === '1set' && old.current === null && old.record.matches.join('-') === '0-0', 'ancienne sauvegarde : valeurs par défaut');
 });

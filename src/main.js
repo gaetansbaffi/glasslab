@@ -38,7 +38,10 @@ function onScreen(name) {
   $('detail').hidden = name !== 'detail';
   input.setEnabled(playing);
   device.keepAwake(playing || name === 'detail');
-  if (name === 'home') hud.show('home');
+  if (name === 'home') {
+    hud.renderHome(store.save);
+    hud.show('home');
+  } else if (name === 'over') hud.show('matchEnd');
   else if (name === 'paused') {
     hud.renderSummary(Stats.sessionSummary(store.save.balls, game.session), game.score, game.points);
     $('lastDetailBtn').hidden = !game.hasError;
@@ -106,11 +109,31 @@ function stopLoop() {
 
 /* ---------- Branchements ---------- */
 
+/** Plein écran et paysage sur mobile, au moment de lancer le jeu (geste de l'utilisateur requis). */
+function immersive() {
+  if (device.isTouch) device.fullscreen(true).then(() => device.lockLandscape());
+}
+
 function wireUi() {
+  // Jouer : reprend le match en cours s'il y en a un, sinon nouveau match au format choisi
   $('playBtn').addEventListener('click', () => {
-    if (device.isTouch) device.fullscreen(true).then(() => device.lockLandscape());
+    immersive();
     game.start();
   });
+  $('newMatchBtn').addEventListener('click', () => {
+    if (!window.confirm('Abandonner le match en cours et en commencer un nouveau ?')) return;
+    immersive();
+    game.newMatch();
+  });
+  document.querySelectorAll('.fmt-btn').forEach((b) =>
+    b.addEventListener('click', () => {
+      store.save = Object.assign({}, store.save, { format: b.dataset.format });
+      store.persist();
+      hud.renderHome(store.save);
+    })
+  );
+  $('newMatchEndBtn').addEventListener('click', () => game.newMatch());
+  $('homeEndBtn').addEventListener('click', () => game.quit());
   $('pauseBtn').addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     game.pause();
@@ -133,7 +156,7 @@ function wireUi() {
   document.querySelectorAll('.fs-btn').forEach((b) => b.addEventListener('click', () => device.fullscreen()));
   document.querySelectorAll('[data-open]').forEach((b) =>
     b.addEventListener('click', () => {
-      const from = game.screen === 'home' ? 'home' : 'pause';
+      const from = game.screen === 'home' ? 'home' : game.screen === 'over' ? 'matchEnd' : 'pause';
       if (b.dataset.open === 'settings') hud.renderSettings(store.save.settings, changeSetting);
       else hud.renderStats(store.save);
       hud.openSub(b.dataset.open, from);

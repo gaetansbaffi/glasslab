@@ -14,7 +14,9 @@
  *     (fenêtre de ±250 ms, type de coup, qualité, meilleur choix) ; si c'est une IA, elle planifie son
  *     interception, court, choisit son coup et peut faire une faute ;
  *   - le point se termine sur une faute, une balle gagnante ou une de tes erreurs ; le score suit les
- *     règles du padel (score.js) ; courte pause, nouveau point. Quand c'est ton tour, tu sers avec Frappe.
+ *     règles du padel (score.js) ; courte pause, nouveau point. Quand c'est ton tour, tu sers avec Frappe ;
+ *   - le match se joue au format choisi (1 set, ou 2 sets gagnants avec super jeu décisif) ; une fois
+ *     gagné, la partie s'arrête (phase 'over'). Sans format, les sets s'enchaînent sans fin.
  *
  * Partie orientée entraînement (option b) : les adversaires visent ton côté ≈ 65 % du temps, et leurs balles
  * vers toi suivent la répétition espacée par famille (vitres). Stats et feedback : seulement tes coups.
@@ -67,11 +69,15 @@ function sideRange(side, cfg) {
 /* ---------- Création ---------- */
 
 /**
- * Nouvelle partie. o = { seed, config?, level?, weights?, hand? (1 droitier, −1 gaucher), player? (ta position) }
+ * Nouvelle partie. o = { seed, config?, level?, weights?, hand? (1 droitier, −1 gaucher), player? (ta position),
+ *   format? ('1set' | '3sets', score.js ; absent : sets sans fin), score? et pointsWon? (match sauvegardé : reprise) }
  */
 function createMatch(o) {
   const cfg = o.config || DEFAULT_CONFIG;
   const start = o.player || cfg.player.start;
+  const fmt = SC.FORMATS[o.format] || { bestOf: 0, superTiebreak: false };
+  const golden = cfg.score ? cfg.score.golden : true;
+  const score = (o.score && SC.restore(o.score)) || SC.createScore({ golden, bestOf: fmt.bestOf, superTiebreak: fmt.superTiebreak });
   const s = {
     seed: o.seed >>> 0,
     cfg,
@@ -83,14 +89,16 @@ function createMatch(o) {
     phase: 'serve',
     pauseLeft: 0,
     index: 0,
-    score: SC.createScore({ golden: cfg.score ? cfg.score.golden : true }),
+    score,
+    format: SC.FORMATS[o.format] ? o.format : score.bestOf === 3 ? '3sets' : score.bestOf === 1 ? '1set' : null,
+    winner: score.winner,
     serve: null, // service en cours : { by, receiver, side, second, contact, hitAt }
     serveFaults: 0,
     players: [],
     modes: ['defense', 'defense'],
     flight: null,
     recv: null,
-    pointsWon: [0, 0],
+    pointsWon: o.pointsWon ? o.pointsWon.slice() : [0, 0],
     rallyHits: 0,
     streak: 0,
     bestStreak: 0,
@@ -105,7 +113,8 @@ function createMatch(o) {
     const spot = i === 0 ? start : fromTeam(r.team, T.formation(r.side, 'defense', 5, cfg));
     s.players.push(PL.createAgent({ x: spot.x, y: spot.y }));
   }
-  setupServe(s, false);
+  if (s.winner != null) s.phase = 'over';
+  else setupServe(s, false);
   return s;
 }
 
@@ -133,6 +142,7 @@ function aiTarget(s, i) {
   const r = ROSTER[i];
   const cfg = s.cfg;
   if (s.phase === 'serve') return { target: s.players[i].target, pace: 1 }; // chacun à sa place pour le service
+  if (s.phase === 'over') return { target: s.players[i], pace: 0.55 }; // match terminé : on s'arrête
   if (s.recv && s.recv.player === i && s.recv.plan) return { target: s.recv.plan.pos, pace: 1 };
   const bx = toTeam(r.team, { x: threatX(s, r.team), y: 10 }).x;
   const mode = s.modes[r.team];
@@ -505,10 +515,20 @@ function endPoint(s, winner, reason) {
   const r = SC.pointWon(s.score, winner);
   s.score = r.score;
   s.lastPoint = { winner, reason, label: POINT_REASONS[reason] || reason, by: f ? f.hitter : null, rallyHits: s.rallyHits };
-  s.events.push({ type: 'point', winner, reason, by: f ? f.hitter : null, rallyHits: s.rallyHits, score: SC.display(s.score) });
-  if (r.game != null) s.events.push({ type: 'game', winner: r.game, games: s.score.games.slice(), sets: s.score.sets.slice() });
-  if (r.set != null) s.events.push({ type: 'set', winner: r.set, sets: s.score.sets.slice() });
-  if (r.tiebreak) s.events.push({ type: 'tiebreak' });
+  const d = SC.display(s.score);
+  s.events.push({ type: 'point', winner, reason, by: f ? f.hitter : null, rallyHits: s.rallyHits, score: d, call: r.game == null ? SC.call(s.score) : null });
+  if (r.game != null) {
+    // Jeux du set qui vient de se jouer (avant la remise à zéro d'un set gagné)
+    const games = r.set != null ? d.history[d.history.length - 1].games : s.score.games.slice();
+    s.events.push({ type: 'game', winner: r.game, games, sets: s.score.sets.slice() });
+  }
+  if (r.set != null) s.events.push({ type: 'set', winner: r.set, sets: s.score.sets.slice(), label: SC.setLabel(d.history[d.history.length - 1]) });
+  if (r.tiebreak) s.events.push({ type: 'tiebreak', super: r.superTiebreak });
+  if (r.match != null) {
+    s.phase = 'over';
+    s.winner = r.match;
+    s.events.push({ type: 'match', winner: r.match, score: d, pointsWon: s.pointsWon.slice() });
+  }
   s.recv = null;
 }
 
@@ -649,6 +669,7 @@ function step(state, dt, input) {
   if (s.serve) s.serve = Object.assign({}, s.serve);
   moveUser(s, input.move, dt);
   moveAIs(s, dt);
+  if (s.phase === 'over') return s; // match terminé
   if (s.phase === 'dead' || s.phase === 'pause') {
     // Fin du point (puis mise en place du suivant) ou courte pause après une faute de service / un let
     s.pauseLeft -= dt;
@@ -704,6 +725,7 @@ function scoreDisplay(s) {
 
 /** Point attribué directement à une équipe (tests, réglages) : mêmes règles de score que endPoint. */
 function awardPoint(state, team) {
+  if (state.phase === 'over') return state;
   const s = Object.assign({}, state, { events: [], players: state.players.slice(), phase: 'live' });
   endPoint(s, team, team === 0 ? 'out' : 'userMiss');
   return s;

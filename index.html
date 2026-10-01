@@ -23,16 +23,17 @@
 <body>
   <canvas id="game" aria-label="Court de padel en 3D, vue à la première personne, dans le corps du joueur"></canvas>
 
-  <!-- Interface de jeu : uniquement la série, Pause, le joystick, Frappe et le toast -->
+  <!-- Interface de jeu : le score, Pause, le joystick, Frappe et le toast -->
   <div id="ui" class="ui" hidden>
     <div id="touch" class="touch"></div>
-    <div id="streak" class="streak" aria-live="polite"><span id="streakVal">0</span><small>série</small></div>
+    <!-- Tableau de score : sets terminés, jeux du set en cours, points (● = équipe au service) -->
     <div id="score" class="score" aria-label="Score">
-      <div id="scoreUs" class="score-row"><span class="srv" aria-hidden="true"></span><b>Vous</b><span class="sets"></span><span class="games"></span><span class="pts"></span></div>
-      <div id="scoreThem" class="score-row"><span class="srv" aria-hidden="true"></span><b>Eux</b><span class="sets"></span><span class="games"></span><span class="pts"></span></div>
+      <div id="scoreUs" class="score-row"><span class="srv" aria-hidden="true"></span><b>Vous</b><span class="hist"></span><span class="games"></span><span class="pts"></span></div>
+      <div id="scoreThem" class="score-row"><span class="srv" aria-hidden="true"></span><b>Eux</b><span class="hist"></span><span class="games"></span><span class="pts"></span></div>
       <div id="scoreNote" class="score-note" hidden></div>
     </div>
-    <div id="banner" class="banner" hidden role="status" aria-live="polite"></div>
+    <!-- Annonce de l'arbitre après chaque point (« 30-15 », « Jeu · vous »…) et sa raison -->
+    <div id="banner" class="banner" hidden role="status" aria-live="polite"><b id="bannerText"></b><small id="bannerSub"></small></div>
     <div id="servePrompt" class="serve-prompt" hidden>À toi de servir : appuie sur Frappe</div>
     <button id="pauseBtn" class="icon-btn pause-btn" aria-label="Pause (Échap)">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
@@ -46,7 +47,6 @@
     <div id="guide" class="guide" hidden role="note"></div>
     <div id="hint" class="hint" hidden>Astuce : tourne ton téléphone en paysage pour mieux voir le court.</div>
     <div id="level" class="level" hidden role="status" aria-live="polite"></div>
-    <div id="pointMsg" class="point-msg" hidden role="status" aria-live="polite"></div>
     <div id="spinTag" class="spin-tag" hidden aria-live="polite"></div>
     <div id="call" class="call" hidden aria-live="polite"></div>
   </div>
@@ -58,6 +58,13 @@
     <h1 id="homeTitle" class="title">Glass<span>Lab</span></h1>
     <p class="tagline">Partie en double · lis les vitres, choisis ton coup</p>
     <button id="playBtn" class="btn-play">Jouer</button>
+    <p id="resumeInfo" class="resume-info" hidden></p>
+    <div class="formats" role="group" aria-label="Format du match">
+      <span class="formats-lbl" id="formatsLbl">Match</span>
+      <button class="fmt-btn" data-format="1set" aria-pressed="true">1 set</button>
+      <button class="fmt-btn" data-format="3sets" aria-pressed="false">2 sets gagnants</button>
+    </div>
+    <button id="newMatchBtn" class="btn-link" hidden>Nouveau match</button>
     <div class="home-icons">
       <button class="icon-btn labeled" data-open="stats" aria-label="Statistiques">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="13" rx="1"/><rect x="16" y="3" width="4" height="17" rx="1"/></svg><span>Stats</span>
@@ -83,6 +90,20 @@
         <button class="btn" id="lastDetailBtn">Revoir la dernière erreur</button>
         <button class="btn fs-btn">Plein écran</button>
         <button class="btn danger" id="quitBtn">Quitter</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fin de match -->
+  <section id="matchEnd" class="screen menu" hidden aria-labelledby="matchEndTitle">
+    <div class="panel">
+      <h2 id="matchEndTitle" class="end-title"></h2>
+      <p id="matchEndScore" class="end-score"></p>
+      <div class="summary" id="matchEndSummary"></div>
+      <button id="newMatchEndBtn" class="btn-primary">Nouveau match</button>
+      <div class="menu-row">
+        <button class="btn" data-open="stats">Stats</button>
+        <button class="btn" id="homeEndBtn">Accueil</button>
       </div>
     </div>
   </section>

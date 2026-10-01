@@ -1,20 +1,25 @@
 /*
- * Glass Lab — progression du Match infini : schéma de sauvegarde versionné, migration,
- * enregistrement des balles, répétition espacée, difficulté adaptative et statistiques.
+ * Glass Lab — progression : schéma de sauvegarde versionné, migration, enregistrement des balles,
+ * répétition espacée, difficulté adaptative, statistiques, format de match préféré et match en cours.
  * Fonctions pures : la lecture / écriture du localStorage est faite par src/storage.js.
  */
+import SC from './score.js';
 
 export const SCHEMA_VERSION = 3;
+export const FORMAT_IDS = ['1set', '3sets'];
 export const MATCH_FAMILIES = ['direct', 'A', 'B', 'C', 'D'];
 export const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass'];
 const MAX_BALLS = 5000;
 
-/** Bilan cumulé des parties en double : [gagnés, perdus] pour les points, jeux et sets. */
+/** Bilan cumulé des parties en double : [gagnés, perdus] pour les points, jeux, sets et matchs. */
 function emptyRecord() {
-  return { points: [0, 0], games: [0, 0], sets: [0, 0] };
+  return { points: [0, 0], games: [0, 0], sets: [0, 0], matches: [0, 0] };
 }
 
-/** État vierge. `settings` reçoit les valeurs par défaut fournies par l'interface. */
+/**
+ * État vierge. `settings` reçoit les valeurs par défaut fournies par l'interface.
+ * format : format de match choisi à l'accueil ; current : match en cours (repris par « Reprendre »).
+ */
 function createState(defaultSettings) {
   return {
     version: SCHEMA_VERSION,
@@ -24,11 +29,22 @@ function createState(defaultSettings) {
     guideDone: false,
     settings: Object.assign({}, defaultSettings),
     record: emptyRecord(),
+    format: FORMAT_IDS[0],
+    current: null,
     balls: [],
   };
 }
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
+
+/** Match en cours relu d'une sauvegarde : { format, score, pointsWon, at } valide, ou null. */
+function cleanCurrent(raw) {
+  if (!raw || typeof raw !== 'object' || FORMAT_IDS.indexOf(raw.format) < 0) return null;
+  const score = SC.restore(raw.score);
+  if (!score || score.winner != null) return null;
+  const pw = Array.isArray(raw.pointsWon) ? raw.pointsWon : [];
+  return { format: raw.format, score, pointsWon: [0, 1].map((i) => Math.max(0, Math.round(+pw[i]) || 0)), at: isNum(raw.at) ? raw.at : 0 };
+}
 
 /** Bilan relu d'une sauvegarde : entiers positifs uniquement, sinon zéro. */
 function cleanRecord(raw) {
@@ -75,6 +91,8 @@ function migrate(raw, defaultSettings) {
           guideDone: !!raw.guideDone,
           settings: cleanSettings(raw.settings, defaultSettings),
           record: cleanRecord(raw.record),
+          format: FORMAT_IDS.indexOf(raw.format) >= 0 ? raw.format : FORMAT_IDS[0],
+          current: cleanCurrent(raw.current),
           balls,
         },
         from: raw.version,
@@ -242,8 +260,10 @@ const Stats = {
   SCHEMA_VERSION,
   MATCH_FAMILIES,
   SHOT_TYPES,
+  FORMAT_IDS,
   emptyRecord,
   createState,
+  cleanCurrent,
   validBall,
   migrate,
   importState,

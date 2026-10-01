@@ -359,3 +359,32 @@ test('score avec avantage (config) : 40-40 puis avantage, jeu à deux points d�
   st = M.awardPoint(st, 0);
   assert(st.score.games[0] === 1, 'jeu');
 });
+
+test('match au format 1 set : fin de match, plus de service ; reprise d’un match sauvegardé', () => {
+  let st = M.createMatch({ seed: 5, level: 3, format: '1set' });
+  const events = [];
+  for (let k = 0; k < 24 * 4 + 10 && st.phase !== 'over'; k++) {
+    st = M.awardPoint(st, 0);
+    events.push(...st.events);
+  }
+  assert(st.phase === 'over' && st.winner === 0, 'match gagné 6-0 : ' + st.phase);
+  const end = events.find((e) => e.type === 'match');
+  assert(end && end.winner === 0 && end.score.history.length === 1 && end.score.history[0].games.join('-') === '6-0', 'événement de fin de match');
+  const set = events.find((e) => e.type === 'set');
+  assert(set && set.label === '6-0', 'set 6-0');
+  const lastGame = events.filter((e) => e.type === 'game').pop();
+  assert(lastGame.games.join('-') === '6-0', 'jeux du dernier jeu : ' + lastGame.games.join('-'));
+  // Plus rien ne se passe : pas de nouveau service, plus de point
+  for (let i = 0; i < 600; i++) st = M.step(st, DT, { strike: true });
+  assert(st.phase === 'over' && st.score.history.length === 1, 'match terminé : la partie reste arrêtée');
+  assert(M.awardPoint(st, 1) === st, 'plus de point attribué');
+  // Reprise : un score sauvegardé en cours de match reprend au même serveur, au même score
+  let mid = M.createMatch({ seed: 6, level: 3, format: '3sets' });
+  for (let k = 0; k < 19; k++) mid = M.awardPoint(mid, k % 3 === 0 ? 1 : 0);
+  const saved = JSON.parse(JSON.stringify(mid.score));
+  const again = M.createMatch({ seed: 7, level: 3, format: '1set', score: saved });
+  const a = M.scoreDisplay(mid);
+  const b = M.scoreDisplay(again);
+  assert(JSON.stringify([a.points, a.games, a.sets, a.server, a.side]) === JSON.stringify([b.points, b.games, b.sets, b.server, b.side]), 'même score, même serveur');
+  assert(again.score.bestOf === 3 && again.phase === 'serve', 'format du match sauvegardé conservé');
+});

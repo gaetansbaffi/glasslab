@@ -1,10 +1,11 @@
 /*
- * Glass Lab — interface superposée : HUD minimal, écrans (accueil, pause, réglages, stats) et Détail.
- * Aucun panneau ni texte permanent pendant le jeu : série, Pause, joystick, Frappe et toast.
- * Réglages : son et vibration, mode gaucher, données (3 au total).
+ * Glass Lab — interface superposée : HUD minimal, écrans (accueil, pause, fin de match, réglages, stats)
+ * et Détail. Pendant le jeu : le tableau de score, Pause, joystick, Frappe, le toast et les annonces brèves.
+ * Réglages : son et vibration, mode gaucher, données (3 au total) ; le format du match se choisit à l'accueil.
  */
 import Q from './core/quality.js';
 import SG from './core/shotgen.js';
+import SC from './core/score.js';
 import Stats from './core/stats.js';
 import { SETTINGS_UI } from './settings.js';
 
@@ -23,10 +24,31 @@ const MISS_HINT = {
   weak: 'mauvaise position : frappe ratée',
 };
 
+const STAKES = { break: 'Balle de break', set: 'Balle de set', match: 'Balle de match' };
+const who = (team) => (team === 0 ? 'vous' : 'eux');
+
+/** Enjeu du point en mots : « Point en or · balle de set pour vous », « Avantage eux »… (ou ''). */
+export function stakeText(d) {
+  const parts = [];
+  if (d.note) parts.push(d.note);
+  if (d.stake) parts.push(`${STAKES[d.stake.kind]} pour ${who(d.stake.team)}`);
+  return parts.map((p, i) => (i ? p.charAt(0).toLowerCase() + p.slice(1) : p)).join(' · ');
+}
+
+/** Score du match en une ligne : sets terminés puis jeux et points en cours (« 6-4 · 2-3 · 30-15 »). */
+export function scoreLine(d, withPoints) {
+  const parts = d.history.map(SC.setLabel);
+  if (d.winner == null) {
+    if (!d.superTb) parts.push(`${d.games[0]}-${d.games[1]}`);
+    if (withPoints && (d.superTb || d.points.some((p) => p !== '0'))) parts.push(`${d.points[0]}-${d.points[1]}`);
+  }
+  return parts.join(' · ');
+}
+
 export function createHud() {
   const toast = { el: $('toast'), timer: 0 };
   const guide = { el: $('guide'), step: -1, timer: 0, onDone: null };
-  const screens = ['home', 'pause', 'settings', 'stats'];
+  const screens = ['home', 'pause', 'matchEnd', 'settings', 'stats'];
   let backTo = null;
 
   function show(name) {
@@ -65,20 +87,6 @@ export function createHud() {
   function hideToast() {
     clearTimeout(toast.timer);
     toast.el.hidden = true;
-  }
-
-  /* ----- Série ----- */
-
-  let lastStreak = 0;
-  function setStreak(n) {
-    const el = $('streak');
-    $('streakVal').textContent = n;
-    if (n > lastStreak) {
-      el.classList.remove('bump');
-      void el.offsetWidth; // relance l'animation
-      el.classList.add('bump');
-    }
-    lastStreak = n;
   }
 
   /* ----- Bulles de guide (premier lancement, jamais bloquantes) ----- */
@@ -155,18 +163,6 @@ export function createHud() {
     else callEl.style.transform = '';
   }
 
-  /* ----- Point marqué ou perdu : annonce brève, sans masquer le jeu ----- */
-
-  let pointTimer = 0;
-  function point(won, why) {
-    const el = $('pointMsg');
-    el.className = 'point-msg ' + (won ? 'won' : 'lost');
-    el.textContent = (won ? 'Point pour vous' : 'Point pour eux') + (why ? ' · ' + why : '');
-    el.hidden = false;
-    clearTimeout(pointTimer);
-    pointTimer = setTimeout(() => (el.hidden = true), 1500);
-  }
-
   /* ----- Effet de la balle qui t'arrive : étiquette brève (« Balle coupée », « Balle liftée »…) ----- */
 
   let spinTimer = 0;
@@ -180,31 +176,41 @@ export function createHud() {
     spinTimer = setTimeout(() => (el.hidden = true), 1300);
   }
 
-  /* ----- Score : tableau discret en haut à gauche ----- */
+  /* ----- Score : tableau en haut à gauche ----- */
 
   function setScore(d) {
     if (!d) return;
     const rows = [$('scoreUs'), $('scoreThem')];
     rows.forEach((row, team) => {
-      row.querySelector('.srv').textContent = d.serverTeam === team ? '●' : '';
-      row.querySelector('.sets').textContent = d.sets[team];
-      row.querySelector('.games').textContent = d.games[team];
-      row.querySelector('.pts').textContent = d.points[team];
+      row.querySelector('.srv').textContent = d.serverTeam === team && d.winner == null ? '●' : '';
+      // Sets terminés : jeux de chaque set (points du super jeu décisif), gagnés en blanc
+      row.querySelector('.hist').innerHTML = d.history
+        .map((h) => `<span class="${h.games[team] > h.games[1 - team] ? 'w' : ''}">${h.super && h.tb ? h.tb[team] : h.games[team]}</span>`)
+        .join('');
+      row.querySelector('.games').textContent = d.superTb || d.winner != null ? '' : d.games[team];
+      const pts = row.querySelector('.pts');
+      pts.textContent = d.points[team];
+      pts.hidden = d.winner != null;
     });
     const note = $('scoreNote');
-    note.textContent = d.note || '';
-    note.hidden = !d.note;
+    const text = d.winner == null ? stakeText(d) : '';
+    note.textContent = text;
+    note.hidden = !text;
   }
 
-  /** Grande annonce brève (jeu, set, faute de service, let). won : vrai / faux / null (neutre). */
+  /**
+   * Grande annonce brève : score annoncé par l'arbitre, jeu, set, faute de service, let.
+   * won : vrai / faux / null (neutre) ; sub : ligne d'explication (raison du point…).
+   */
   let bannerTimer = 0;
-  function banner(text, won) {
+  function banner(text, won, sub, ms) {
     const el = $('banner');
     el.className = 'banner' + (won === true ? ' won' : won === false ? ' lost' : '');
-    el.textContent = text;
+    $('bannerText').textContent = text;
+    $('bannerSub').textContent = sub || '';
     el.hidden = false;
     clearTimeout(bannerTimer);
-    bannerTimer = setTimeout(() => (el.hidden = true), 1600);
+    bannerTimer = setTimeout(() => (el.hidden = true), ms || 1700);
   }
 
   /** « À toi de servir » près du bouton Frappe. */
@@ -263,20 +269,53 @@ export function createHud() {
     if (tips.length) html += '<h3>À travailler</h3><ul class="detail-lines">' + tips.map((t) => `<li>${t}</li>`).join('') + '</ul>';
     const rec = state.record;
     if (rec && rec.points[0] + rec.points[1] > 0) {
-      html += `<p class="small">Bilan de tes parties : points ${rec.points[0]}-${rec.points[1]} · jeux ${rec.games[0]}-${rec.games[1]} · sets ${rec.sets[0]}-${rec.sets[1]}.</p>`;
+      const m = rec.matches || [0, 0];
+      html += `<p class="small">Matchs gagnés ${m[0]}, perdus ${m[1]} · sets ${rec.sets[0]}-${rec.sets[1]} · jeux ${rec.games[0]}-${rec.games[1]} · points ${rec.points[0]}-${rec.points[1]}.</p>`;
     }
     if (!balls.length) html += '<p class="small">Joue quelques balles pour voir tes statistiques.</p>';
     $('statsBody').innerHTML = html;
   }
 
-  function renderSummary(s, score, points) {
-    const sc = score ? `Sets ${score.sets[0]}-${score.sets[1]} · Jeux ${score.games[0]}-${score.games[1]} · ${score.points[0]}-${score.points[1]}${score.note ? ' · ' + score.note : ''}` : '';
-    $('summary').innerHTML = `
-      ${sc ? `<p class="summary-score">${sc}<small>Points gagnés ${points[0]} · perdus ${points[1]}</small></p>` : ''}
+  /** Quatre indicateurs de la session (tes balles). */
+  function kpis(s) {
+    return `
       <div class="kpi"><b>${s.balls}</b><span>Tes balles</span></div>
       <div class="kpi"><b>${s.meanQuality == null ? '—' : fmt(s.meanQuality)}</b><span>Qualité moyenne</span></div>
       <div class="kpi"><b>${s.bestStreak}</b><span>Meilleure série</span></div>
       <div class="kpi"><b>${pct(s.decision)}</b><span>Précision de décision</span></div>`;
+  }
+
+  function renderSummary(s, score, points) {
+    const fmtName = score && score.bestOf ? (score.bestOf === 1 ? 'Match en 1 set' : 'Match en 2 sets gagnants') : '';
+    const sc = score ? `${scoreLine(score, true)}${stakeText(score) ? ' · ' + stakeText(score) : ''}` : '';
+    $('summary').innerHTML = `
+      ${sc ? `<p class="summary-score">${sc}<small>${fmtName ? fmtName + ' · ' : ''}Points gagnés ${points[0]} · perdus ${points[1]}</small></p>` : ''}
+      ${kpis(s)}`;
+  }
+
+  /** Fin de match : victoire ou défaite, score par set, points et tes indicateurs de la session. */
+  function renderMatchEnd(o) {
+    const won = o.winner === 0;
+    const title = $('matchEndTitle');
+    title.textContent = won ? 'Victoire' : 'Défaite';
+    title.className = 'end-title ' + (won ? 'won' : 'lost');
+    $('matchEndScore').innerHTML = `${o.score.history.map(SC.setLabel).join(' · ')}<small>Points gagnés ${o.points[0]} · perdus ${o.points[1]}</small>`;
+    $('matchEndSummary').innerHTML = kpis(o.session);
+  }
+
+  /** Accueil : « Jouer » ou « Reprendre » (match en cours), format du prochain match. */
+  function renderHome(save) {
+    const cur = save.current;
+    $('playBtn').textContent = cur ? 'Reprendre' : 'Jouer';
+    const info = $('resumeInfo');
+    if (cur) {
+      const d = SC.display(cur.score);
+      info.textContent = `Match en cours (${SC.FORMATS[cur.format].name}) · ${scoreLine(d, true)}`;
+    }
+    info.hidden = !cur;
+    $('newMatchBtn').hidden = !cur;
+    $('formatsLbl').textContent = cur ? 'Nouveau match' : 'Match';
+    document.querySelectorAll('.fmt-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.format === save.format)));
   }
 
   /* ----- Détail ----- */
@@ -297,7 +336,6 @@ export function createHud() {
     show,
     showToast,
     hideToast,
-    setStreak,
     guideShow,
     guideHide,
     onGuideDone(fn) {
@@ -310,7 +348,6 @@ export function createHud() {
     levelChange,
     call,
     placeCall,
-    point,
     spinTag,
     setScore,
     banner,
@@ -318,6 +355,8 @@ export function createHud() {
     cut,
     renderStats,
     renderSummary,
+    renderMatchEnd,
+    renderHome,
     renderDetail,
     setCamButtons,
     /** Ouvre un sous-écran (réglages, stats) en mémorisant l'écran de retour. */

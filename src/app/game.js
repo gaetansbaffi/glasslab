@@ -1,9 +1,10 @@
 /*
- * Glass Lab — session de jeu : partie en double à 4 joueurs (core/match.js), boucle à pas fixe
+ * Glass Lab — session de jeu : match en double à 4 joueurs (core/match.js), boucle à pas fixe
  * (120 Hz de temps de jeu) avec interpolation, animation des 4 joueurs, caméra 1re personne, sons,
- * feedback, statistiques (tes coups seulement) et Détail.
+ * annonces de l'arbitre, feedback, statistiques (tes coups seulement) et Détail.
  *
- * Vitesse du jeu fixée par la difficulté adaptative (config.game.levelSpeed) : aucun réglage.
+ * Le match en cours est sauvegardé à chaque point (reprise depuis l'accueil) ; à sa fin, écran de fin
+ * de match. Vitesse du jeu fixée par la difficulté adaptative (config.game.levelSpeed) : aucun réglage.
  */
 import CFG from '../core/config.js';
 import G from '../core/geometry.js';
@@ -22,6 +23,7 @@ const TOAST_OK_MS = 1400;
 const TOAST_ERROR_MS = 2400; // le temps de toucher « Détail »
 const USER_HOP = { splitDuration: 0.16, hop: 0.022 }; // ton split-step : visuel seulement, discret
 const SWING_LEAD = B.CONTACT_AT * 0.3; // le geste commence ≈ 0,17 s avant le contact
+const MATCH_END_MS = 2200; // annonce « Jeu, set et match » avant l'écran de fin
 
 /** Geste correspondant au coup joué. */
 function strokeOf(style, type) {
@@ -40,7 +42,9 @@ export function createGame(ctx) {
   const figures = renderer.figures;
 
   const game = {
-    screen: 'home', // home | playing | paused | detail
+    screen: 'home', // home | playing | paused | detail | over (fin de match)
+    endTimer: 0,
+    lastReason: '',
     cur: null,
     prev: null,
     acc: 0,
@@ -74,8 +78,14 @@ export function createGame(ctx) {
 
   /* ---------- Partie ---------- */
 
-  function start() {
+  /**
+   * Lance le match : reprend le match sauvegardé s'il y en a un (sauf o.fresh), sinon en commence un
+   * nouveau au format choisi à l'accueil.
+   */
+  function start(o) {
     const seed = ctx.params.has('seed') ? Number(ctx.params.get('seed')) >>> 0 : (Math.random() * 4294967296) >>> 0;
+    const saved = o && o.fresh ? null : store.save.current;
+    clearTimeout(game.endTimer);
     game.session = Date.now();
     game.cur = game.prev = M.createMatch({
       seed,
@@ -83,17 +93,37 @@ export function createGame(ctx) {
       level: store.save.level,
       weights: Stats.familyWeights(store.save.balls),
       hand: store.save.settings.lefty ? -1 : 1,
+      format: saved ? saved.format : store.save.format,
+      score: saved ? saved.score : null,
+      pointsWon: saved ? saved.pointsWon : null,
     });
     game.acc = 0;
     game.lastError = null;
     game.firstBallSeen = false;
     game.cur.players.forEach((p, i) => placeActor(actors[i], p.x, p.y));
-    hud.setStreak(0);
+    saveCurrent(); // un nouveau match remplace le match sauvegardé
     hud.hideToast();
     hud.setScore(M.scoreDisplay(game.cur));
     hud.servePrompt(false);
     setScreen('playing');
+    if (saved) hud.banner('Reprise du match', null, scoreLineOf(M.scoreDisplay(game.cur)), 1800);
     if (!store.save.guideDone) hud.guideShow(0);
+  }
+
+  /** Score lisible pour l'annonce de reprise : « 6-4 · 2-3 · 30-15 ». */
+  function scoreLineOf(d) {
+    const parts = d.history.map((h) => (h.super && h.tb ? `[${h.tb[0]}-${h.tb[1]}]` : `${h.games[0]}-${h.games[1]}`));
+    if (!d.superTb) parts.push(`${d.games[0]}-${d.games[1]}`);
+    parts.push(`${d.points[0]}-${d.points[1]}`);
+    return parts.join(' · ');
+  }
+
+  /** Sauvegarde du match en cours (score, points gagnés), ou effacement s'il est terminé. */
+  function saveCurrent() {
+    const s = game.cur;
+    const current = s && s.format && s.phase !== 'over' ? { format: s.format, score: s.score, pointsWon: s.pointsWon, at: Date.now() } : null;
+    store.save = Object.assign({}, store.save, { current });
+    store.persist();
   }
 
   function setScreen(name) {
@@ -113,6 +143,7 @@ export function createGame(ctx) {
   }
 
   function quit() {
+    clearTimeout(game.endTimer);
     game.cur = game.prev = null;
     replay.stop();
     hud.hideToast();
@@ -157,7 +188,6 @@ export function createGame(ctx) {
     store.save = res.state;
     store.persist();
     applyMatchSettings();
-    hud.setStreak(game.cur.streak);
     const error = r.outcome === 'miss' || r.quality < CFG.quality.ok;
     if (error) game.lastError = { shot, result: r };
     hud.showToast(r, CFG, error ? TOAST_ERROR_MS : TOAST_OK_MS, error);
@@ -165,7 +195,7 @@ export function createGame(ctx) {
     if (hud.guideStep === 0 || hud.guideStep === 1) hud.guideShow(2);
   }
 
-  /** Bilan cumulé des parties (sauvegardé) : [gagnés, perdus] pour les points, jeux et sets. */
+  /** Bilan cumulé des parties (sauvegardé) : [gagnés, perdus] pour les points, jeux, sets et matchs. */
   function record(kind, winner) {
     const rec = Object.assign(Stats.emptyRecord(), store.save.record);
     rec[kind] = rec[kind].slice();
@@ -200,20 +230,33 @@ export function createGame(ctx) {
     } else if (e.type === 'call') {
       hud.call(e.mine ? 'À moi !' : 'À toi !');
     } else if (e.type === 'point') {
-      hud.point(e.winner === 0, M.POINT_REASONS[e.reason] || '');
+      // Annonce de l'arbitre : le score, serveur d'abord (le jeu, le set et le match ont leur annonce)
+      const why = M.POINT_REASONS[e.reason] || '';
+      game.lastReason = `Point pour ${e.winner === 0 ? 'vous' : 'eux'}${why ? ' · ' + why : ''}`;
+      if (e.call) hud.banner(e.call, e.winner === 0, game.lastReason);
       hud.setScore(e.score);
       record('points', e.winner);
+      saveCurrent();
       if (e.reason !== 'userMiss' && e.reason !== 'userNet') audio.point(e.winner === 0);
     } else if (e.type === 'game') {
-      hud.banner(e.winner === 0 ? 'Jeu pour vous' : 'Jeu pour eux', e.winner === 0);
+      hud.banner(`Jeu · ${e.winner === 0 ? 'vous' : 'eux'}`, e.winner === 0, `${e.games[0]}-${e.games[1]} · ${game.lastReason}`);
       record('games', e.winner);
     } else if (e.type === 'set') {
       record('sets', e.winner);
-      hud.banner(`Set pour ${e.winner === 0 ? 'vous' : 'eux'} · ${e.sets[0]}-${e.sets[1]}`, e.winner === 0);
+      hud.banner(`Set · ${e.winner === 0 ? 'vous' : 'eux'}`, e.winner === 0, `${e.label} · sets ${e.sets[0]}-${e.sets[1]}`);
+    } else if (e.type === 'tiebreak') {
+      hud.banner(e.super ? 'Super jeu décisif' : 'Jeu décisif', null, e.super ? '1 set partout : 10 points, 2 d’écart' : '6-6 : 7 points, 2 d’écart');
+    } else if (e.type === 'match') {
+      record('matches', e.winner);
+      saveCurrent(); // match terminé : plus rien à reprendre
+      hud.banner('Jeu, set et match', e.winner === 0, `${e.score.history.map((h) => (h.super && h.tb ? `[${h.tb[0]}-${h.tb[1]}]` : `${h.games[0]}-${h.games[1]}`)).join(' · ')} · ${e.winner === 0 ? 'victoire' : 'défaite'}`, MATCH_END_MS);
+      hud.servePrompt(false);
+      clearTimeout(game.endTimer);
+      game.endTimer = setTimeout(() => showMatchEnd(e), MATCH_END_MS);
     } else if (e.type === 'fault') {
-      hud.banner(e.reason === 'net' ? 'Faute de service · filet' : 'Faute de service', null);
+      hud.banner('Faute de service', null, e.reason === 'net' ? 'dans le filet · deuxième service' : e.reason === 'mesh' ? 'grillage après le rebond · deuxième service' : 'hors du carré · deuxième service');
     } else if (e.type === 'let') {
-      hud.banner('Let · on rejoue le service', null);
+      hud.banner('Let', null, 'la balle a touché le filet : on rejoue le service');
     } else if (e.type === 'serveSetup') {
       // Mise en place du point : court fondu (les joueurs sont replacés), score à jour
       hud.cut();
@@ -441,6 +484,15 @@ export function createGame(ctx) {
     actors.forEach((a, i) => figures.update(i, a.skeleton, a.look, a.eye));
   }
 
+  /** Écran de fin de match (après l'annonce « Jeu, set et match »). */
+  function showMatchEnd(e) {
+    if (!game.cur || game.cur.phase !== 'over') return;
+    if (game.screen === 'detail') replay.stop();
+    hud.hideToast();
+    hud.renderMatchEnd({ winner: e.winner, score: e.score, points: e.pointsWon, session: Stats.sessionSummary(store.save.balls, game.session) });
+    setScreen('over');
+  }
+
   function openDetail() {
     if (!game.lastError) return;
     hud.hideToast();
@@ -466,6 +518,8 @@ export function createGame(ctx) {
       return game.cur ? M.scoreDisplay(game.cur) : null;
     },
     start,
+    /** Nouveau match (le match sauvegardé est abandonné), au format choisi à l'accueil. */
+    newMatch: () => start({ fresh: true }),
     pause,
     resume,
     quit,
@@ -485,10 +539,11 @@ export function createGame(ctx) {
     set debugInput(v) {
       game.debugInput = v;
     },
-    /** Tests : attribue un point à une équipe (mêmes règles de score). */
+    /** Tests : attribue un point à une équipe (mêmes règles de score, mêmes annonces). */
     debugAward(team) {
       if (!game.cur) return;
       game.cur = game.prev = M.awardPoint(game.cur, team);
+      for (const e of game.cur.events) onEvent(e);
     },
   };
 }
