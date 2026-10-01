@@ -49,7 +49,14 @@ Conçu **mobile d'abord** (plein écran, deux pouces, paysage conseillé), jouab
 - **iPhone / iPad (Safari)** : Partager → « Sur l'écran d'accueil » (Safari n'a pas d'API plein écran : c'est l'application installée qui s'ouvre sans barre d'adresse).
 - **PC (Chrome, Edge)** : icône d'installation dans la barre d'adresse.
 
-Après le premier chargement, le jeu fonctionne **hors ligne** (`sw.js`). Pour publier une mise à jour, change `VERSION` dans `sw.js`.
+Après le premier chargement, le jeu fonctionne **hors ligne** (`sw.js`). Sur GitHub Pages, `VERSION` est remplacée automatiquement à chaque publication ; en local, change-la à la main.
+
+## Publication (GitHub Pages)
+
+- Chaque envoi sur `main` ou sur une branche `claude/…` lance les tests puis publie le jeu sur la branche `gh-pages` (`.github/workflows/pages.yml`, `tools/publier.sh`). Une version cassée n'est jamais publiée.
+- **Jamais de retour en arrière** : un envoi dont le commit est déjà en ligne, ou plus ancien que celui en ligne, ne republie rien (ex. création d'une branche sur un ancien commit).
+- **Republier un commit précis** (rare) : étiquette `publication-<n>` sur ce commit (`git tag publication-3 <commit> && git push origin publication-3`), ou « Run workflow » dans l'onglet Actions de GitHub.
+- La version publiée (commit et date) s'affiche **en bas de l'accueil**. Le service worker prend ce commit pour version : un téléphone reçoit la mise à jour au plus tard au deuxième rechargement (ou en rouvrant l'application installée).
 
 ## Lancer en local
 

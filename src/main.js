@@ -258,8 +258,27 @@ function boot() {
   onScreen('home');
   startLoop();
   registerServiceWorker();
+  showBuild();
   // Accès de test (navigateur sans affichage) : état courant, sans effet sur le jeu
   if (params.has('debug')) window.__glasslab = { game, store, renderer };
+}
+
+/**
+ * Version publiée, en bas de l'accueil : publication.txt est écrit à chaque publication sur GitHub Pages
+ * (tools/publier.sh : commit, origine, date). Absent en local : rien n'est affiché.
+ */
+function showBuild() {
+  fetch('publication.txt')
+    .then((r) => (r.ok ? r.text() : ''))
+    .then((text) => {
+      const [sha, , date] = text.trim().split(/\s+/);
+      if (!/^[0-9a-f]{7,40}$/.test(sha || '')) return;
+      const d = new Date(date);
+      const when = isNaN(d) ? '' : ' · ' + d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+      $('buildInfo').textContent = `Version ${sha.slice(0, 7)}${when}`;
+      $('buildInfo').hidden = false;
+    })
+    .catch(() => {});
 }
 
 /** PWA : service worker (hors ligne après le premier chargement), seulement en HTTPS ou en local. */

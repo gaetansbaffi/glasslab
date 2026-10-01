@@ -1,10 +1,13 @@
 # Publie Glass Lab sur GitHub Pages (branche gh-pages) à chaque nouvelle version poussée.
 # Les tests doivent passer : une version cassée n'est jamais publiée.
+# tools/publier.sh ne republie jamais une version plus ancienne que celle en ligne ; une étiquette
+# `publication-*` (ou un lancement manuel) force la republication du commit étiqueté.
 name: Publier sur GitHub Pages
 
 on:
   push:
     branches: [main, 'claude/**']
+    tags: ['publication-*']
   workflow_dispatch:
 
 permissions:
@@ -19,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # historique complet : comparer avec la version déjà en ligne
 
       - uses: actions/setup-node@v4
         with:
@@ -29,15 +34,5 @@ jobs:
 
       - name: Publier sur gh-pages
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir site
-          cp -r index.html style.css manifest.webmanifest sw.js icons src vendor site/
-          touch site/.nojekyll
-          cd site
-          git init -q
-          git checkout -q -b gh-pages
-          git add -A
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -qm "Publication de ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
-          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          REMOTE: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: bash tools/publier.sh

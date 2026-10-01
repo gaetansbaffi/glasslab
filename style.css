@@ -196,6 +196,7 @@ button { font: inherit; color: inherit; }
 }
 .btn-play:active, .btn-primary:active, .btn:active { transform: scale(0.97); }
 .home-icons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.build-info { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .resume-info { margin: -4px 0 0; color: var(--text-2); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .formats { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .formats-lbl { color: var(--muted); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }

@@ -1,6 +1,7 @@
 /*
  * Glass Lab — service worker : cache-first des fichiers locaux, jeu jouable hors ligne après le premier
- * chargement. Changer VERSION pour publier une mise à jour : l'ancien cache est supprimé à l'activation.
+ * chargement. Sur GitHub Pages, VERSION est remplacée à chaque publication par le commit publié
+ * (tools/publier.sh) : l'ancien cache est supprimé à l'activation. En local, la changer à la main.
  */
 const VERSION = 'glasslab-v4.5.0';
 const FILES = [
