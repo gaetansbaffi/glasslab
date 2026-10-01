@@ -35,7 +35,7 @@ test('positions : défense au fond, attaque au filet, partenaires alignés, chac
 test('transitions : volée = attaque, lob profond = on monte et ils reculent, frappe du fond = défense', () => {
   const m = ['defense', 'defense'];
   assert(T.modesAfterHit(m, 0, { style: 'volley', hitterY: 7 })[0] === 'attack');
-  const lob = T.modesAfterHit(['defense', 'attack'], 0, { style: 'lob', hitterY: 2, bounceY: 2 });
+  const lob = T.modesAfterHit(['defense', 'attack'], 0, { style: 'lob', hitterY: 2, bounceY: 1.5 });
   assert(lob[0] === 'attack' && lob[1] === 'defense', 'lob passant : ' + lob);
   assert(T.modesAfterHit(['attack', 'defense'], 0, { style: 'drive', hitterY: 2.2 })[0] === 'defense', 'frappe du fond');
   assert(T.modesAfterHit(m, 1, { style: 'drive', hitterY: 4.8, shortBall: true })[1] === 'attack', 'balle courte jouée : on monte');
@@ -109,7 +109,7 @@ test('coups des IA : smash seulement au filet, lob face à des joueurs au filet,
   const back = count({ type: 'overhead', z: 2.4, y: 3, oppMode: 'attack', level: 5 }, 400);
   assert(!back.smash, 'pas de smash du fond : ' + JSON.stringify(back));
   const defense = count({ type: 'afterGlass', z: 1.0, y: 1.5, oppMode: 'attack', level: 3 }, 400);
-  assert(defense.lob > 100 && defense.chiquita > 40 && defense.defense > 40, 'défense face au filet : ' + JSON.stringify(defense));
+  assert(defense.lob > 80 && defense.chiquita > 60 && defense.defense > 80, 'défense face au filet : ' + JSON.stringify(defense));
   for (let i = 0; i < 300; i++) {
     const o = { type: ['volley', 'halfVolley', 'beforeGlass', 'afterGlass', 'overhead'][i % 5], z: 0.2 + (i % 13) * 0.22, y: 1 + (i % 9), oppMode: i % 2 ? 'attack' : 'defense', level: 1 + (i % 5) };
     const st = T.chooseStyle(o, rng);

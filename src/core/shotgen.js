@@ -315,8 +315,8 @@ function familyZone(family, side, style, cfg) {
  * o = {
  *   origin { x, y, z } (monde) : point de frappe ; team : équipe du frappeur (0 bas, 1 haut) ;
  *   style (config.styles) ; zone { x, y } (repère du receveur) ou family + side (balle d'entraînement) ;
- *   receiver : { pos { x, y } (monde), config (lois de déplacement du receveur), playable } : la balle doit
- *              être jouable par lui (meilleur choix ≥ playable) — facultatif ;
+ *   receiver : { pos { x, y } (monde), config (lois de déplacement du receveur), playable, noVolley } : la
+ *              balle doit être jouable par lui (meilleur choix ≥ playable) — facultatif ;
  *   level, seed, config, extra (champs ajoutés au vol)
  * }
  * Retourne un vol (flight.js) valide — la balle passe le filet et rebondit chez le receveur —, avec
@@ -329,7 +329,8 @@ function generateTo(o) {
   const origin = F.toTeamFrame(recv, o.origin);
   if (!(origin.y > NET_Y + 0.05)) return null;
   const st = cfg.styles[o.style];
-  const zone = o.family ? familyZone(o.family, o.side || { xMin: 0.3, xMax: 9.7 }, o.style, cfg) : o.zone || { x: [0.6, 9.4], y: st.depth };
+  // Zone imposée (ex. carré de service) : la famille ne sert alors qu'à filtrer
+  const zone = o.zone || (o.family ? familyZone(o.family, o.side || { xMin: 0.3, xMax: 9.7 }, o.style, cfg) : { x: [0.6, 9.4], y: st.depth });
   if (!zone) return null;
   const recvPos = o.receiver ? F.toTeamFrame(recv, o.receiver.pos) : null;
   const playable = o.receiver && o.receiver.playable != null ? o.receiver.playable : cfg.quality.playable;
@@ -347,7 +348,7 @@ function generateTo(o) {
     }
     const shot = { init: c.net, sim: half, tStart: -c.tn, endT: half.endT, family };
     if (recvPos) {
-      const best = Q.bestChoice(shot, recvPos, o.receiver.config || cfg);
+      const best = Q.bestChoice(shot, recvPos, o.receiver.config || cfg, { noVolley: !!o.receiver.noVolley });
       if (!best.best || best.best.quality < playable) continue;
       shot.best = best;
     }

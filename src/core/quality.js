@@ -171,10 +171,11 @@ function timeMargin(shot, t, from, to, cfg) {
 
 /**
  * Meilleur point de frappe atteignable pour chaque type de coup, par échantillonnage de la trajectoire.
- * from = position du joueur au moment de la frappe adverse.
+ * from = position du joueur au moment de la frappe adverse ; opts = { noVolley } (retour de service :
+ * la balle doit rebondir avant d'être jouée).
  * Retourne { byType: { type: { quality, t, ball, pos, margin } | null }, bestType, best }.
  */
-function bestChoice(shot, from, cfg) {
+function bestChoice(shot, from, cfg, opts) {
   cfg = cfg || DEFAULT_CONFIG;
   const dt = cfg.strike.sampleDt;
   const byType = { volley: null, halfVolley: null, beforeGlass: null, afterGlass: null };
@@ -184,6 +185,7 @@ function bestChoice(shot, from, cfg) {
     const b = ballStateAt(shot, t);
     if (b.floorBounces >= 2) break;
     const type = classifyShot(b, cfg);
+    if (opts && opts.noVolley && type === 'volley') continue;
     const zn = cfg.zones[type];
     if (b.z < zn.zMin || b.z > zn.zMax) continue;
     const pos = idealPosition(b, from, cfg);

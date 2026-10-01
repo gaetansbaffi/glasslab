@@ -57,7 +57,8 @@ function partnerSpot(side, mode, ballX, userPos, cfg) {
 function modesAfterHit(modes, team, o) {
   const out = modes.slice();
   const recv = 1 - team;
-  const deepLob = o.style === 'lob' && o.bounceY != null && o.bounceY < 3.8;
+  // Seul un lob très profond oblige l'équipe au filet à reculer ; sinon elle le joue au-dessus de la tête
+  const deepLob = o.style === 'lob' && o.bounceY != null && o.bounceY < 2.3;
   if (o.hitterY >= 6.0 || ['volley', 'bandeja', 'vibora', 'smash'].includes(o.style)) out[team] = 'attack';
   else if (deepLob || (o.style === 'chiquita' && o.hitterY >= 3.5) || (o.shortBall && o.hitterY >= 4.5)) out[team] = 'attack';
   else out[team] = 'defense';
@@ -136,11 +137,12 @@ const PREFER = {
  * Où et quand une IA frappe : meilleur point atteignable de la balle (repère de son équipe) depuis `from`
  * (sa position à la frappe adverse), réaction et accélération comprises, selon son mode (au filet, elle
  * préfère la volée et les coups au-dessus de la tête).
- * Retourne { t, ball, pos, type ('volley' | 'halfVolley' | 'beforeGlass' | 'afterGlass' | 'overhead'),
- *            quality } ou null si la balle est hors d'atteinte.
+ * opts = { noVolley } (retour de service). Retourne { t, ball, pos, type ('volley' | 'halfVolley' |
+ * 'beforeGlass' | 'afterGlass' | 'overhead'), quality } ou null si la balle est hors d'atteinte.
  */
-function aiIntercept(shot, from, mode, cfg) {
+function aiIntercept(shot, from, mode, cfg, opts) {
   cfg = cfg || DEFAULT_CONFIG;
+  const noVolley = !!(opts && opts.noVolley);
   const acfg = aiConfig(cfg);
   const pref = PREFER[mode] || PREFER.defense;
   const oh = cfg.overhead;
@@ -149,6 +151,7 @@ function aiIntercept(shot, from, mode, cfg) {
   for (let t = t0; t < shot.endT; t += 1 / 60) {
     const b = Q.ballStateAt(shot, t);
     if (b.floorBounces >= 2) break;
+    if (noVolley && b.floorBounces === 0) continue; // retour de service : on laisse rebondir
     let type = Q.classifyShot(b, cfg);
     let zn = cfg.zones[type];
     if ((type === 'volley' || type === 'beforeGlass' || type === 'afterGlass') && b.z > zn.zMax && b.z <= oh.zMax) {
@@ -205,7 +208,7 @@ function chooseStyle(o, rng, cfg) {
     list = [['chiquita', 0.5], ['drive', 0.5]];
   } else {
     const base = o.type === 'afterGlass' ? 'defense' : 'drive';
-    list = o.oppMode === 'attack' ? [['lob', 0.45], ['chiquita', 0.25], [base, 0.3]] : [[base, 0.62], ['lob', 0.22], ['chiquita', 0.16]];
+    list = o.oppMode === 'attack' ? [['lob', 0.34], ['chiquita', 0.28], [base, 0.38]] : [[base, 0.66], ['lob', 0.18], ['chiquita', 0.16]];
   }
   // Le coup doit être jouable à cette hauteur de contact
   const ok = list.filter(([s]) => o.z >= cfg.styles[s].contact[0] && o.z <= cfg.styles[s].contact[1]);

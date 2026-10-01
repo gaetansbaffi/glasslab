@@ -81,7 +81,8 @@ export function swinging(a, clock) {
  *   x, y, vx, vy : position et vitesse au sol ;
  *   ball : { x, y, z } | null ; ahead : position de la balle ≈ 0,22 s plus tard (anticipation du regard) ;
  *   incoming : { t (s avant le contact prévu), z (hauteur de contact), x, y } | null — la balle est pour ce joueur ;
- *   hop : saut du split-step (m) ; crouchScale : part de la flexion appliquée (1re personne : réduite)
+ *   hop : saut du split-step (m) ; crouchScale : part de la flexion appliquée (1re personne : réduite) ;
+ *   lookAt : point regardé à la place de la balle (facultatif) ; offHand : cible de la main libre (facultatif)
  * }
  */
 export function updateActor(a, f, dt, clock) {
@@ -92,9 +93,10 @@ export function updateActor(a, f, dt, clock) {
   a.vel.y = f.vy || 0;
   a.hop = f.hop || 0;
 
-  // Regard : la tête suit la balle (yeux à la hauteur courante), le corps pivote si besoin
+  // Regard : la tête suit la balle (yeux à la hauteur courante), le corps pivote si besoin ;
+  // f.lookAt impose un point (le serveur regarde le receveur, pas la balle qu'il tient)
   B.eyePosition(a.pos, a.look, a.crouch * (f.crouchScale == null ? 1 : f.crouchScale), a.hop, a.eye);
-  a.look = B.lookStep(a.look, B.gazeTarget(a.look, a.eye, f.ball, a.pos, a.gazeOpts, f.ahead), dt, a.lookOpts);
+  a.look = B.lookStep(a.look, B.gazeTarget(a.look, a.eye, f.lookAt || f.ball, a.pos, a.gazeOpts, f.lookAt ? null : f.ahead), dt, a.lookOpts);
 
   // Côté de la balle (coup droit / revers) et préparation
   if (f.ball) a.side = B.ballSide(a.side, a.pos, a.look.bodyYaw, f.incoming || f.ball, 0.2);
@@ -135,6 +137,7 @@ export function updateActor(a, f, dt, clock) {
   k.twist = twist;
   k.hand = a.hand;
   k.racket = a.racket;
+  k.offHand = f.offHand || null; // main libre : tient la balle avant le service
   B.skeleton(k, a.skeleton);
   // Yeux finaux (caméra en 1re personne)
   B.eyePosition(a.pos, a.look, a.crouch * (f.crouchScale == null ? 1 : f.crouchScale), a.hop, a.eye);

@@ -40,7 +40,7 @@ function onScreen(name) {
   device.keepAwake(playing || name === 'detail');
   if (name === 'home') hud.show('home');
   else if (name === 'paused') {
-    hud.renderSummary(Stats.sessionSummary(store.save.balls, game.session));
+    hud.renderSummary(Stats.sessionSummary(store.save.balls, game.session), game.score, game.points);
     $('lastDetailBtn').hidden = !game.hasError;
     hud.show('pause');
   } else hud.show(null);
@@ -230,7 +230,8 @@ function boot() {
   window.addEventListener('blur', () => game.pause());
   // L'audio ne peut démarrer qu'après un geste de l'utilisateur
   for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => audio.unlock(), { capture: true, passive: true });
-  $('fps').hidden = !params.has('debug');
+  $('fps').hidden = params.get('debug') !== '1';
+  document.documentElement.classList.toggle('debug', params.get('debug') === '1');
   onScreen('home');
   startLoop();
   registerServiceWorker();

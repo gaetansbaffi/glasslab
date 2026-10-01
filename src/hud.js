@@ -167,6 +167,48 @@ export function createHud() {
     pointTimer = setTimeout(() => (el.hidden = true), 1500);
   }
 
+  /* ----- Score : tableau discret en haut à gauche ----- */
+
+  function setScore(d) {
+    if (!d) return;
+    const rows = [$('scoreUs'), $('scoreThem')];
+    rows.forEach((row, team) => {
+      row.querySelector('.srv').textContent = d.serverTeam === team ? '●' : '';
+      row.querySelector('.sets').textContent = d.sets[team];
+      row.querySelector('.games').textContent = d.games[team];
+      row.querySelector('.pts').textContent = d.points[team];
+    });
+    const note = $('scoreNote');
+    note.textContent = d.note || '';
+    note.hidden = !d.note;
+  }
+
+  /** Grande annonce brève (jeu, set, faute de service, let). won : vrai / faux / null (neutre). */
+  let bannerTimer = 0;
+  function banner(text, won) {
+    const el = $('banner');
+    el.className = 'banner' + (won === true ? ' won' : won === false ? ' lost' : '');
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => (el.hidden = true), 1600);
+  }
+
+  /** « À toi de servir » près du bouton Frappe. */
+  function servePrompt(on) {
+    $('servePrompt').hidden = !on;
+  }
+
+  /** Changement de point : court fondu au noir (les joueurs sont replacés pendant le noir). */
+  function cut() {
+    const el = $('fade');
+    el.classList.remove('fading');
+    el.style.opacity = '1';
+    void el.offsetWidth;
+    el.classList.add('fading');
+    el.style.opacity = '0';
+  }
+
   /* ----- Niveau : annonce discrète quand la difficulté adaptative change ----- */
 
   let levelTimer = 0;
@@ -206,13 +248,19 @@ export function createHud() {
       if (dbl.aligned < 0.7) tips.push('Reste aligné avec ton partenaire : montez et reculez ensemble.');
     }
     if (tips.length) html += '<h3>À travailler</h3><ul class="detail-lines">' + tips.map((t) => `<li>${t}</li>`).join('') + '</ul>';
+    const rec = state.record;
+    if (rec && rec.points[0] + rec.points[1] > 0) {
+      html += `<p class="small">Bilan de tes parties : points ${rec.points[0]}-${rec.points[1]} · jeux ${rec.games[0]}-${rec.games[1]} · sets ${rec.sets[0]}-${rec.sets[1]}.</p>`;
+    }
     if (!balls.length) html += '<p class="small">Joue quelques balles pour voir tes statistiques.</p>';
     $('statsBody').innerHTML = html;
   }
 
-  function renderSummary(s) {
+  function renderSummary(s, score, points) {
+    const sc = score ? `Sets ${score.sets[0]}-${score.sets[1]} · Jeux ${score.games[0]}-${score.games[1]} · ${score.points[0]}-${score.points[1]}${score.note ? ' · ' + score.note : ''}` : '';
     $('summary').innerHTML = `
-      <div class="kpi"><b>${s.balls}</b><span>Balles jouées</span></div>
+      ${sc ? `<p class="summary-score">${sc}<small>Points gagnés ${points[0]} · perdus ${points[1]}</small></p>` : ''}
+      <div class="kpi"><b>${s.balls}</b><span>Tes balles</span></div>
       <div class="kpi"><b>${s.meanQuality == null ? '—' : fmt(s.meanQuality)}</b><span>Qualité moyenne</span></div>
       <div class="kpi"><b>${s.bestStreak}</b><span>Meilleure série</span></div>
       <div class="kpi"><b>${pct(s.decision)}</b><span>Précision de décision</span></div>`;
@@ -250,6 +298,10 @@ export function createHud() {
     call,
     placeCall,
     point,
+    setScore,
+    banner,
+    servePrompt,
+    cut,
     renderStats,
     renderSummary,
     renderDetail,

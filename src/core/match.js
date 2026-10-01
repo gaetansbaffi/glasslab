@@ -6,12 +6,15 @@
  *   2 et 3 = adversaires IA, en haut (2 à leur droite, donc x < 5 ; 3 à leur gauche).
  *
  * Déroulement d'un point :
- *   - mise en jeu par l'équipe du haut (étape 2 : balle de fond ; le service arrive avec le score) ;
+ *   - mise en place des 4 joueurs, puis service à la cuillère : la balle tombe, rebondit et part en
+ *     diagonale ; elle doit rebondir dans le carré de service (sinon faute, deuxième service ; double faute
+ *     = point perdu ; filet puis carré = let, on rejoue) et le retour se joue après le rebond ;
  *   - chaque frappe crée un vol (flight.js) ; l'équipe qui reçoit désigne qui prend la balle (tactics.js) ;
  *     si c'est toi, tu te places et tu appuies sur Frappe : même logique que l'échange historique
  *     (fenêtre de ±250 ms, type de coup, qualité, meilleur choix) ; si c'est une IA, elle planifie son
  *     interception, court, choisit son coup et peut faire une faute ;
- *   - le point se termine sur une faute, une balle gagnante ou une de tes erreurs ; courte pause, nouveau point.
+ *   - le point se termine sur une faute, une balle gagnante ou une de tes erreurs ; le score suit les
+ *     règles du padel (score.js) ; courte pause, nouveau point. Quand c'est ton tour, tu sers avec Frappe.
  *
  * Partie orientée entraînement (option b) : les adversaires visent ton côté ≈ 65 % du temps, et leurs balles
  * vers toi suivent la répétition espacée par famille (vitres). Stats et feedback : seulement tes coups.
@@ -25,6 +28,7 @@ import PL from './players.js';
 import F from './flight.js';
 import T from './tactics.js';
 import R from './rally.js';
+import SC from './score.js';
 import DEFAULT_CONFIG from './config.js';
 
 /** Composition des équipes : équipe, côté (+1 droite, −1 gauche, dans le repère de l'équipe), IA ou non. */
@@ -36,7 +40,14 @@ const ROSTER = [
 ];
 
 const MISS_REASONS = Object.assign({}, R.MISS_REASONS, { serveVolley: 'Volée au retour de service' });
-const POINT_PAUSE = 1.6; // s de jeu entre deux points
+const POINT_PAUSE = 1.6; // s de jeu entre la fin d'un point et la mise en place du suivant
+const SERVE_WAIT = 1.0; // un serveur IA attend ≈ 1 s après la mise en place (le temps de voir)
+const FAULT_PAUSE = 0.9; // après une faute de service ou un let
+const TOSS_Z = 1.05; // la balle est lâchée à cette hauteur, rebondit, puis est frappée au sommet du rebond
+const TOSS_FALL = Math.sqrt((2 * (TOSS_Z - P.DEFAULT_PARAMS.radius)) / P.DEFAULT_PARAMS.g);
+const SERVE_DROP = TOSS_FALL * (1 + P.DEFAULT_PARAMS.eFloor); // du lâcher à la frappe (≈ 0,8 s)
+const SERVE_Z = P.DEFAULT_PARAMS.radius + P.DEFAULT_PARAMS.eFloor * P.DEFAULT_PARAMS.eFloor * (TOSS_Z - P.DEFAULT_PARAMS.radius);
+const SERVE_FAULTS = [0.08, 0.035]; // fautes des serveurs IA : premier, deuxième service
 
 /* ---------- Repères ---------- */
 
@@ -70,10 +81,12 @@ function createMatch(o) {
     hand: o.hand || 1,
     hands: [o.hand || 1, 1, 1, 1],
     clock: 0,
-    phase: 'dead',
-    pauseLeft: 0.9, // le temps de voir les joueurs se mettre en place
+    phase: 'serve',
+    pauseLeft: 0,
     index: 0,
-    feeds: 0,
+    score: SC.createScore({ golden: cfg.score ? cfg.score.golden : true }),
+    serve: null, // service en cours : { by, receiver, side, second, contact, hitAt }
+    serveFaults: 0,
     players: [],
     modes: ['defense', 'defense'],
     flight: null,
@@ -93,6 +106,7 @@ function createMatch(o) {
     const spot = i === 0 ? start : fromTeam(r.team, T.formation(r.side, 'defense', 5, cfg));
     s.players.push(PL.createAgent({ x: spot.x, y: spot.y }));
   }
+  setupServe(s, false);
   return s;
 }
 
@@ -101,7 +115,7 @@ function createMatch(o) {
 function moveUser(s, move, dt) {
   const pc = s.cfg.player;
   const u = s.players[0];
-  const planted = s.recv && s.recv.player === 0 && s.recv.user.pending;
+  const planted = (s.recv && s.recv.player === 0 && s.recv.user.pending) || (s.phase === 'serve' && s.serve && s.serve.by === 0);
   const m = planted ? { x: u.x, y: u.y, vx: 0, vy: 0 } : PL.stepVelocity(u, PL.inputVelocity(move, pc), dt, pc, pc.bounds);
   s.players[0] = Object.assign({}, u, m, { dist: u.dist + Math.hypot(m.x - u.x, m.y - u.y) });
 }
@@ -119,6 +133,7 @@ function threatX(s, team) {
 function aiTarget(s, i) {
   const r = ROSTER[i];
   const cfg = s.cfg;
+  if (s.phase === 'serve') return { target: s.players[i].target, pace: 1 }; // chacun à sa place pour le service
   if (s.recv && s.recv.player === i && s.recv.plan) return { target: s.recv.plan.pos, pace: 1 };
   const bx = toTeam(r.team, { x: threatX(s, r.team), y: 10 }).x;
   const mode = s.modes[r.team];
@@ -161,7 +176,8 @@ function launch(s, flight, hitter, t0) {
   const bounceY = first ? toTeam(recv, first.pos).y : null;
   const hitterY = toTeam(team, flight.init).y;
   const short = s.lastReceivedShort && s.lastReceivedShort[team];
-  s.modes = T.modesAfterHit(s.modes, team, { style: flight.style, hitterY, bounceY, shortBall: short });
+  if (flight.serve) s.modes = team === 0 ? ['attack', 'defense'] : ['defense', 'attack']; // le serveur monte au filet
+  else s.modes = T.modesAfterHit(s.modes, team, { style: flight.style, hitterY, bounceY, shortBall: short });
   // L'équipe qui reçoit fait son split-step
   for (let i = 0; i < 4; i++) if (ROSTER[i].team === recv && ROSTER[i].ai) s.players[i] = PL.splitStep(s.players[i], s.clock, s.cfg.ai);
   s.events.push({ type: 'hit', by: hitter, team, style: flight.style, index: s.index });
@@ -173,25 +189,27 @@ function assignReceiver(s) {
   const f = s.flight;
   s.recv = null;
   if (f.verdict.fault || !f.shot) return; // faute du frappeur : personne ne joue la balle
+  if (f.serve && f.serve.judge.type !== 'ok') return; // service fautif ou let : on ne joue pas
   const team = f.recv;
   const ids = team === 0 ? [0, 1] : [2, 3];
   const players = ids.map((i) => ({ side: ROSTER[i].side, hand: s.hands[i], pos: toTeam(team, s.players[i]) }));
   const params = ids.map((i) => (ROSTER[i].ai ? s.cfg.ai : Object.assign({ reaction: s.cfg.player.reactionTime }, s.cfg.player)));
-  const who = T.whoTakes(players, f.shot, s.modes[team], params, s.cfg);
+  // Au service, c'est le joueur en diagonale qui reçoit
+  const who = f.serve ? { index: ids.indexOf(f.serve.receiver), central: false } : T.whoTakes(players, f.shot, s.modes[team], params, s.cfg);
   let id = ids[who.index];
   // Balle courte reçue (pour monter au filet après l'avoir jouée)
   const bounce = f.shot.sim.contacts[0];
   s.lastReceivedShort = Object.assign({}, s.lastReceivedShort, { [team]: !!bounce && bounce.pos.y > 6.5 });
   if (id === 0) {
     const shot = f.shot;
-    if (!shot.best) shot.best = Q.bestChoice(shot, s.players[0], s.cfg);
+    if (!shot.best) shot.best = Q.bestChoice(shot, s.players[0], s.cfg, { noVolley: !!f.serve });
     if (!shot.best.best) {
       // Injouable pour toi (balle au centre partie de l'autre côté) : ton partenaire la prend
       id = 1;
     } else {
-      s.recv = { player: 0, user: { shot, pending: null, spawnPos: { x: s.players[0].x, y: s.players[0].y } } };
+      s.recv = { player: 0, user: { shot, pending: null, spawnPos: { x: s.players[0].x, y: s.players[0].y }, serve: !!f.serve } };
       s.balls++;
-      s.events.push({ type: 'userBall', index: s.index, family: shot.family, central: who.central });
+      s.events.push({ type: 'userBall', index: s.index, family: shot.family, central: who.central, serve: !!f.serve });
       if (who.central) s.events.push({ type: 'call', by: 1, mine: false });
       return;
     }
@@ -205,7 +223,7 @@ function planAI(s, id, central) {
   const r = ROSTER[id];
   const from = toTeam(r.team, s.players[id]);
   const shot = f.shot; // déjà dans le repère de l'équipe qui reçoit
-  const it = T.aiIntercept(shot, from, s.modes[r.team], s.cfg);
+  const it = T.aiIntercept(shot, from, s.modes[r.team], s.cfg, { noVolley: !!f.serve });
   if (central && r.team === 0) s.events.push({ type: 'call', by: 1, mine: true });
   if (!it) {
     s.recv = { player: id, plan: { chase: true, pos: fromTeam(r.team, T.chaseSpot(shot)), tau: Infinity, ballWorld: fromTeam(r.team, T.chaseSpot(shot)) } };
@@ -396,6 +414,11 @@ function userHit(s, tc, pos, overshoot) {
   };
   u.pending = null;
   const contact = F.ballAt(s.flight, tc + s.flight.cross);
+  if (s.flight.serve && q.type === 'volley') {
+    // Le retour de service doit rebondir : volée = faute
+    userMiss(s, 'serveVolley', { type: result.type, quality: result.quality, contactT: tc, ball: b, placementError: result.placementError });
+    return;
+  }
   if (q.score < cfg.quality.minReturn) {
     // Frappe trop faible : la balle part dans le filet
     s.recv = { player: 0, user: u };
@@ -469,6 +492,7 @@ const POINT_REASONS = {
   double: 'balle gagnante',
   back: 'balle gagnante',
   dead: 'balle gagnante',
+  doubleFault: 'double faute',
 };
 
 function endPoint(s, winner, reason) {
@@ -478,30 +502,138 @@ function endPoint(s, winner, reason) {
   s.pointsWon = s.pointsWon.slice();
   s.pointsWon[winner]++;
   const f = s.flight;
+  const r = SC.pointWon(s.score, winner);
+  s.score = r.score;
   s.lastPoint = { winner, reason, label: POINT_REASONS[reason] || reason, by: f ? f.hitter : null, rallyHits: s.rallyHits };
-  s.events.push({ type: 'point', winner, reason, by: f ? f.hitter : null, rallyHits: s.rallyHits });
+  s.events.push({ type: 'point', winner, reason, by: f ? f.hitter : null, rallyHits: s.rallyHits, score: SC.display(s.score) });
+  if (r.game != null) s.events.push({ type: 'game', winner: r.game, games: s.score.games.slice(), sets: s.score.sets.slice() });
+  if (r.set != null) s.events.push({ type: 'set', winner: r.set, sets: s.score.sets.slice() });
+  if (r.tiebreak) s.events.push({ type: 'tiebreak' });
   s.recv = null;
 }
 
-/** Prochaine mise en jeu : qui remet la balle, d'où, avec quel coup (pour animer le geste avant). */
-function feedPreview(s) {
-  if (s.phase !== 'dead') return null;
-  const by = 2 + (s.feeds % 2);
-  const p = s.players[by];
-  const origin = { x: Math.max(0.8, Math.min(9.2, p.x + (ROSTER[by].side > 0 ? -0.4 : 0.4))), y: Math.max(p.y, 16.5), z: 1.0 };
-  return { by, origin, style: 'drive' };
+/* ---------- Service ---------- */
+
+/** Carré de service du receveur (repère de son équipe) : diagonale, entre la ligne de service et le filet. */
+function serviceBox(side) {
+  return { x: side > 0 ? [5.25, 9.55] : [0.45, 4.75], y: [3.35, 9.4] };
 }
 
-/** Nouveau point (étape 2) : un adversaire remet la balle en jeu depuis le fond. */
-function startPoint(s) {
-  const feed = feedPreview(s);
-  s.phase = 'live';
+/**
+ * Mise en place d'un service (score.js : serveur, receveur, côté). Les 4 joueurs sont replacés :
+ * serveur derrière la ligne de service, son partenaire au filet, receveur au fond en diagonale, son
+ * partenaire en défense. second : deuxième service (après une faute).
+ */
+function setupServe(s, second) {
+  const d = SC.display(s.score);
+  const side = d.side === 'right' ? 1 : -1;
+  const by = d.server;
+  const recv = d.receiver;
+  const sTeam = ROSTER[by].team;
+  const rTeam = 1 - sTeam;
+  const spots = {};
+  spots[by] = { x: 5 + side * 2.3, y: 1.9 };
+  spots[sTeam === 0 ? (by === 0 ? 1 : 0) : by === 2 ? 3 : 2] = { x: 5 - side * 2.05, y: s.cfg.tactics.attackY };
+  spots[recv] = { x: 5 + side * 2.45, y: 1.5 };
+  spots[rTeam === 0 ? (recv === 0 ? 1 : 0) : recv === 2 ? 3 : 2] = { x: 5 - side * 2.4, y: s.cfg.tactics.defenseY };
+  for (let i = 0; i < 4; i++) {
+    const w = fromTeam(ROSTER[i].team, spots[i]);
+    s.players[i] = Object.assign({}, s.players[i], { x: w.x, y: w.y, vx: 0, vy: 0, target: { x: w.x, y: w.y }, reactAt: -Infinity });
+  }
+  // Contact du service : devant le serveur, du côté de son coup droit, au sommet du rebond de la balle lâchée
+  const c = fromTeam(sTeam, { x: spots[by].x + 0.35 * s.hands[by], y: spots[by].y + 0.3 });
+  s.serve = { by, receiver: recv, side, second: !!second, contact: { x: c.x, y: c.y, z: SERVE_Z }, hitAt: by === 0 ? null : s.clock + SERVE_WAIT + SERVE_DROP };
+  s.modes = sTeam === 0 ? ['attack', 'defense'] : ['defense', 'attack'];
+  s.phase = 'serve';
+  s.recv = null;
   s.rallyHits = 0;
-  s.modes = ['defense', 'defense'];
   s.lastReceivedShort = null;
-  s.feeds++;
-  s.events.push({ type: 'feed', by: feed.by });
-  launch(s, opponentShot(s, feed.origin, feed.style, rngFor(s, 4)), feed.by, s.clock);
+  s.events.push({ type: 'serveSetup', by, receiver: recv, side: d.side, second: !!second, score: d });
+}
+
+/** Prochaine frappe de service (pour animer le geste avant) : { by, contact, hitAt, style } ou null. */
+function servePreview(s) {
+  if (s.phase !== 'serve' || !s.serve) return null;
+  return { by: s.serve.by, contact: s.serve.contact, hitAt: s.serve.hitAt, style: 'serve' };
+}
+
+/**
+ * Issue d'un service : 'fault' (filet, hors du carré, grillage après le rebond), 'let' (touche le filet
+ * puis tombe dans le carré : on rejoue) ou 'ok'. t = instant de la décision (τ du vol).
+ */
+function judgeServe(flight, box) {
+  const v = flight.verdict;
+  if (v.fault) return { type: 'fault', t: v.t, reason: v.reason };
+  const recv = flight.recv;
+  const contacts = flight.sim.contacts;
+  const bi = contacts.findIndex((c) => c.type === 'floor' && c.side === recv);
+  const bounce = contacts[bi];
+  const p = toTeam(recv, bounce.pos);
+  if (p.x < box.x[0] - 0.25 || p.x > box.x[1] + 0.25 || p.y < 3.05 || p.y > 10) return { type: 'fault', t: bounce.t, reason: 'box' };
+  if (contacts.some((c) => c.type === 'cord' && c.t < bounce.t)) return { type: 'let', t: bounce.t + 0.3 };
+  const wall = contacts.slice(bi + 1).find((c) => c.type !== 'floor');
+  if (wall && wall.t < v.t && !P.onGlass(wall)) return { type: 'fault', t: wall.t, reason: 'mesh' };
+  return { type: 'ok', t: Infinity };
+}
+
+/** Frappe de service : balle valide vers le carré (balle d'entraînement si c'est toi qui reçois), ou faute. */
+function doServe(s) {
+  const sv = s.serve;
+  const cfg = s.cfg;
+  const team = ROSTER[sv.by].team;
+  const rTeam = 1 - team;
+  const box = serviceBox(sv.side);
+  const rng = rngFor(s, 6 + (sv.second ? 1 : 0));
+  const seed = SG.mixSeed(s.seed, 7000 + s.index * 5 + (sv.second ? 1 : 0));
+  let flight = null;
+  const base = { origin: sv.contact, team, style: 'serve', level: s.level, config: cfg };
+  if (sv.by !== 0 && rng() < SERVE_FAULTS[sv.second ? 1 : 0]) {
+    // Faute de service : dans le filet ou trop long (au-delà de la ligne de service)
+    if (rng() < 0.5) flight = errorFlight(s, sv.contact, team, 'serve', rng);
+    else flight = SG.generateTo(Object.assign({}, base, { zone: { x: box.x, y: [1.2, 2.8] }, seed: seed ^ 0x51, attempts: 80 }));
+  }
+  if (!flight) {
+    const receiver = sv.receiver === 0 ? { pos: s.players[0], config: cfg, noVolley: true } : { pos: s.players[sv.receiver], config: T.aiConfig(cfg), noVolley: true, playable: 0.4 };
+    if (sv.receiver === 0) {
+      // Retour de service pour toi : famille de vitres selon la répétition espacée, si le carré le permet
+      const first = SG.pickFamily(s.weights, rng);
+      const order = [first].concat(SG.FAMILY_IDS.filter((f) => f !== first));
+      for (const family of order) {
+        flight = SG.generateTo(Object.assign({}, base, { zone: box, family, receiver, seed: SG.mixSeed(seed, family.charCodeAt(0)), attempts: 40 }));
+        if (flight) break;
+      }
+    }
+    if (!flight) flight = SG.generateTo(Object.assign({}, base, { zone: box, receiver, seed: seed ^ 0x77, attempts: 200 }));
+    if (!flight) flight = SG.generateTo(Object.assign({}, base, { zone: box, seed: seed ^ 0x99, attempts: 300 }));
+    if (flight) flight.target = sv.receiver === 0 ? 0 : sv.receiver === 1 ? 1 : 2;
+  }
+  if (!flight) flight = anyShot(s, sv.contact, team, rng);
+  flight.style = 'serve';
+  flight.serve = { side: sv.side, receiver: sv.receiver, second: sv.second, box };
+  flight.serve.judge = judgeServe(flight, box);
+  s.phase = 'live';
+  s.serve = null;
+  launch(s, flight, sv.by, sv.hitAt);
+}
+
+/** Faute de service ou let : deuxième service, double faute (point au receveur) ou service rejoué. */
+function serveFault(s, judge) {
+  const f = s.flight;
+  if (judge.type === 'let') {
+    s.events.push({ type: 'let' });
+    s.phase = 'pause';
+    s.pauseLeft = FAULT_PAUSE;
+    s.nextServe = { second: f.serve.second };
+    return;
+  }
+  if (f.serve.second) {
+    endPoint(s, f.recv, 'doubleFault');
+    return;
+  }
+  s.events.push({ type: 'fault', reason: judge.reason, by: f.hitter });
+  s.phase = 'pause';
+  s.pauseLeft = FAULT_PAUSE;
+  s.nextServe = { second: true };
 }
 
 /* ---------- Pas de jeu ---------- */
@@ -515,16 +647,35 @@ function step(state, dt, input) {
   input = input || {};
   s.clock = state.clock + dt;
   if (s.recv && s.recv.user) s.recv = Object.assign({}, s.recv, { user: Object.assign({}, s.recv.user) });
+  if (s.serve) s.serve = Object.assign({}, s.serve);
   moveUser(s, input.move, dt);
   moveAIs(s, dt);
-  if (s.phase === 'dead') {
+  if (s.phase === 'dead' || s.phase === 'pause') {
+    // Fin du point (puis mise en place du suivant) ou courte pause après une faute de service / un let
     s.pauseLeft -= dt;
-    if (s.pauseLeft <= 0) startPoint(s);
+    if (s.pauseLeft <= 0) {
+      const second = s.phase === 'pause' && s.nextServe ? s.nextServe.second : false;
+      s.nextServe = null;
+      setupServe(s, second);
+    }
+    return s;
+  }
+  if (s.phase === 'serve') {
+    // Ton service : Frappe lâche la balle, la frappe part au sommet du rebond
+    if (s.serve.by === 0 && s.serve.hitAt == null && input.strike) {
+      s.serve.hitAt = s.clock + SERVE_DROP;
+      s.events.push({ type: 'userServe' });
+    }
+    if (s.serve.hitAt != null && s.clock >= s.serve.hitAt) doServe(s);
     return s;
   }
   const f = s.flight;
   const tau = s.clock - f.t0;
   const r = s.recv;
+  if (f.serve && f.serve.judge.type !== 'ok' && tau >= f.serve.judge.t) {
+    serveFault(s, f.serve.judge);
+    return s;
+  }
   if (r && r.player === 0) userIncoming(s, input, tau);
   else if (r && r.plan && tau >= r.plan.tau) aiHit(s, tau - r.plan.tau);
   // Balle morte sans être jouée : faute du frappeur ou point gagnant
@@ -532,8 +683,36 @@ function step(state, dt, input) {
   return s;
 }
 
+/** Balle du service : tenue par le serveur, puis lâchée, rebond, et frappée au sommet du rebond. */
+function tossBall(s) {
+  const sv = s.serve;
+  const c = sv.contact;
+  const held = { x: c.x, y: c.y, z: TOSS_Z };
+  if (sv.hitAt == null) return held;
+  const t = s.clock - (sv.hitAt - SERVE_DROP);
+  if (t <= 0) return held;
+  const g = P.DEFAULT_PARAMS.g;
+  if (t < TOSS_FALL) return { x: c.x, y: c.y, z: TOSS_Z - 0.5 * g * t * t };
+  const tb = t - TOSS_FALL;
+  const v = P.DEFAULT_PARAMS.eFloor * g * TOSS_FALL;
+  return { x: c.x, y: c.y, z: Math.max(P.DEFAULT_PARAMS.radius, P.DEFAULT_PARAMS.radius + v * tb - 0.5 * g * tb * tb) };
+}
+
+/** Score lisible (score.js) : points, jeux, sets, serveur, mention spéciale. */
+function scoreDisplay(s) {
+  return SC.display(s.score);
+}
+
+/** Point attribué directement à une équipe (tests, réglages) : mêmes règles de score que endPoint. */
+function awardPoint(state, team) {
+  const s = Object.assign({}, state, { events: [], players: state.players.slice(), phase: 'live' });
+  endPoint(s, team, team === 0 ? 'out' : 'userMiss');
+  return s;
+}
+
 /** Position de la balle (repère monde), ou null avant la première mise en jeu. */
 function ballPosition(s) {
+  if (s.phase === 'serve' && s.serve) return tossBall(s);
   const f = s.flight;
   if (!f) return null;
   return F.ballAt(f, Math.max(0, Math.min(s.clock - f.t0, f.sim.endT)));
@@ -552,6 +731,7 @@ function withSettings(state, patch) {
 
 const Match = {
   ROSTER,
+  SERVE_DROP,
   MISS_REASONS,
   POINT_REASONS,
   toTeam,
@@ -559,7 +739,11 @@ const Match = {
   sideRange,
   createMatch,
   step,
-  feedPreview,
+  awardPoint,
+  scoreDisplay,
+  servePreview,
+  judgeServe,
+  serviceBox,
   ballPosition,
   userShot,
   withSettings,

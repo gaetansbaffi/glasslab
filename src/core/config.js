@@ -133,7 +133,7 @@ const CONFIG = {
   styles: {
     drive: { name: 'Balle de fond', mode: 'net', net: [[2.0, 2.9], [1.15, 1.75]], depth: [1.2, 8.6], kmh: [38, 72], apex: [0, 3.6], contact: [0.3, 1.9] },
     defense: { name: 'Défense après vitre', mode: 'net', net: [[2.3, 3.2], [1.5, 2.4]], depth: [1.0, 8.0], kmh: [35, 70], apex: [0, 4.2], contact: [0.3, 1.9] },
-    lob: { name: 'Lob', mode: 'net', net: [[4.6, 6.6], [4.2, 6.0]], depth: [0.6, 3.6], kmh: [28, 52], apex: [4.6, 8.6], contact: [0.2, 1.9] },
+    lob: { name: 'Lob', mode: 'net', net: [[5.1, 7.4], [4.7, 6.9]], depth: [0.6, 3.6], kmh: [28, 52], apex: [5.0, 8.5], contact: [0.2, 1.9] },
     chiquita: { name: 'Chiquita', mode: 'net', net: [[1.05, 1.4], [0.98, 1.25]], depth: [6.4, 9.3], kmh: [22, 48], apex: [0, 2.2], contact: [0.2, 1.5] },
     volley: { name: 'Volée', mode: 'speed', speed: [[14, 18], [17, 22]], depth: [1.5, 8.6], kmh: [48, 82], apex: [0, 2.4], contact: [0.5, 1.95] },
     bandeja: { name: 'Bandeja', mode: 'speed', speed: [[13, 16.5], [15.5, 20]], depth: [0.8, 4.8], kmh: [45, 75], apex: [0, 3.2], contact: [1.8, 3.1] },
@@ -160,17 +160,20 @@ const CONFIG = {
   training: {
     userShare: 0.65, // part des balles adverses vers toi
     partnerPlayable: 0.5, // les balles vers ton partenaire restent jouables pour lui…
-    partnerWinner: 0.1, // … sauf ≈ 10 % : coups gagnants possibles
+    partnerWinner: 0.15, // … sauf ≈ 15 % : coups gagnants possibles
   },
 
   // Fautes des IA : base + part liée à la difficulté de la balle reçue + risque du coup
   errors: {
-    opponent: { base: 0.05, hard: 0.3 },
-    partner: { base: 0.025, hard: 0.12 },
+    opponent: { base: 0.075, hard: 0.32 },
+    partner: { base: 0.035, hard: 0.12 },
     risk: { smash: 0.06, vibora: 0.04, chiquita: 0.03, lob: 0.02, bandeja: 0.015, volley: 0.01, drive: 0, defense: 0.01, serve: 0 },
   },
   // Zone de frappe au-dessus de la tête (IA : bandeja, víbora, smash)
   overhead: { zMin: 1.9, zMax: 3.1, ideal: [2.3, 2.8], reach: 1.0 },
+
+  // Score : point en or à 40-40 (vrai) ou avantage (faux). Fixé par le jeu, pas de réglage.
+  score: { golden: true },
 
   difficulty: {
     window: 10, // nombre de balles récentes considérées

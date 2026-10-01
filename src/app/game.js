@@ -90,6 +90,8 @@ export function createGame(ctx) {
     game.cur.players.forEach((p, i) => placeActor(actors[i], p.x, p.y));
     hud.setStreak(0);
     hud.hideToast();
+    hud.setScore(M.scoreDisplay(game.cur));
+    hud.servePrompt(false);
     setScreen('playing');
     if (!store.save.guideDone) hud.guideShow(0);
   }
@@ -124,7 +126,9 @@ export function createGame(ctx) {
   /** Le niveau et les poids des familles (répétition espacée) suivent la sauvegarde. */
   function applyMatchSettings() {
     if (!game.cur) return;
-    const patch = { weights: Stats.familyWeights(store.save.balls), level: store.save.level };
+    const hands = game.cur.hands.slice();
+    hands[0] = store.save.settings.lefty ? -1 : 1;
+    const patch = { weights: Stats.familyWeights(store.save.balls), level: store.save.level, hand: hands[0], hands };
     game.cur = M.withSettings(game.cur, patch);
     game.prev = M.withSettings(game.prev, patch);
   }
@@ -161,6 +165,15 @@ export function createGame(ctx) {
     if (hud.guideStep === 0 || hud.guideStep === 1) hud.guideShow(2);
   }
 
+  /** Bilan cumulé des parties (sauvegardé) : [gagnés, perdus] pour les points, jeux et sets. */
+  function record(kind, winner) {
+    const rec = Object.assign(Stats.emptyRecord(), store.save.record);
+    rec[kind] = rec[kind].slice();
+    rec[kind][winner === 0 ? 0 : 1]++;
+    store.save = Object.assign({}, store.save, { record: rec });
+    store.persist();
+  }
+
   /** Volume d'un son selon sa distance à toi. */
   function near(p, base) {
     const u = game.cur.players[0];
@@ -186,7 +199,30 @@ export function createGame(ctx) {
       hud.call(e.mine ? 'À moi !' : 'À toi !');
     } else if (e.type === 'point') {
       hud.point(e.winner === 0, M.POINT_REASONS[e.reason] || '');
+      hud.setScore(e.score);
+      record('points', e.winner);
       if (e.reason !== 'userMiss' && e.reason !== 'userNet') audio.point(e.winner === 0);
+    } else if (e.type === 'game') {
+      hud.banner(e.winner === 0 ? 'Jeu pour vous' : 'Jeu pour eux', e.winner === 0);
+      record('games', e.winner);
+    } else if (e.type === 'set') {
+      record('sets', e.winner);
+      hud.banner(`Set pour ${e.winner === 0 ? 'vous' : 'eux'} · ${e.sets[0]}-${e.sets[1]}`, e.winner === 0);
+    } else if (e.type === 'fault') {
+      hud.banner(e.reason === 'net' ? 'Faute de service · filet' : 'Faute de service', null);
+    } else if (e.type === 'let') {
+      hud.banner('Let · on rejoue le service', null);
+    } else if (e.type === 'serveSetup') {
+      // Mise en place du point : court fondu (les joueurs sont replacés), score à jour
+      hud.cut();
+      hud.setScore(e.score);
+      game.serveSwung = false;
+      hud.servePrompt(e.by === 0);
+    } else if (e.type === 'userServe') {
+      hud.servePrompt(false);
+      const sv = M.servePreview(s);
+      if (sv) startSwing(user, game.animClock, { aim: sv.contact, contactAt: game.animClock + (sv.hitAt - s.clock), side: user.hand, stroke: 'serve' });
+      game.serveSwung = true;
     }
   }
 
@@ -251,7 +287,8 @@ export function createGame(ctx) {
   const ballPos = { x: 0, y: 0, z: 0 };
   const view = { ball: null, reach: null, pathT: null, best: null, mine: null };
   const cam = { eye: user.eye, yaw: 0, pitch: 0, vFov: 70 };
-  const frames = actors.map((a, i) => ({ x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, incoming: null, hop: 0, crouchScale: i === 0 ? 0.4 : 1 }));
+  const frames = actors.map((a, i) => ({ x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, incoming: null, hop: 0, crouchScale: i === 0 ? 0.4 : 1, lookAt: null, offHand: null }));
+  const receiverHead = { x: 0, y: 0, z: 1.5 };
   const incomings = actors.map(() => ({ t: 0, z: 1, x: 0, y: 0 }));
   const callPos = { x: 0, y: 0, visible: false };
   const callHead = { x: 0, y: 0, z: 0 };
@@ -287,10 +324,13 @@ export function createGame(ctx) {
       inc.y = plan.contact.y;
       fr.incoming = inc;
       if (left <= SWING_LEAD && left > -0.05 && !a.swing) startSwing(a, game.animClock, { aim: plan.contact, contactAt: game.animClock + Math.max(0, left), side: a.side, stroke: strokeOf(plan.style, plan.type) });
-    } else if (s.phase === 'dead') {
-      // Mise en jeu : le joueur qui remet la balle arme son geste
-      const feed = M.feedPreview(s);
-      if (feed && feed.by === i && s.pauseLeft <= SWING_LEAD && !a.swing) startSwing(a, game.animClock, { aim: feed.origin, contactAt: game.animClock + s.pauseLeft, side: a.side, stroke: feed.style === 'serve' ? 'serve' : 'ground' });
+    } else if (s.phase === 'serve') {
+      // Service d'une IA : le geste à la cuillère arrive au sommet du rebond de la balle lâchée
+      const sv = M.servePreview(s);
+      if (sv && sv.by === i && sv.hitAt != null) {
+        const left = sv.hitAt - game.animClock;
+        if (left <= SWING_LEAD && left > -0.05 && !a.swing) startSwing(a, game.animClock, { aim: sv.contact, contactAt: game.animClock + Math.max(0, left), side: a.hand, stroke: 'serve' });
+      }
     }
     fr.hop = PL.splitHop(s.players[i], game.animClock, CFG.ai);
   }
@@ -325,6 +365,17 @@ export function createGame(ctx) {
         fr.ball = ball;
         fr.ahead = null;
         if (i > 0) aiAnimation(i, s);
+      }
+      // Service : le serveur tient la balle et regarde le receveur jusqu'au lâcher
+      for (const fr of frames) fr.lookAt = fr.offHand = null;
+      const sv = M.servePreview(s);
+      if (sv) {
+        const holding = sv.hitAt == null || game.animClock < sv.hitAt - M.SERVE_DROP;
+        const rcv = s.players[s.serve.receiver];
+        receiverHead.x = rcv.x;
+        receiverHead.y = rcv.y;
+        frames[sv.by].lookAt = receiverHead;
+        if (holding && ball) frames[sv.by].offHand = ball;
       }
       // Toi : regard qui anticipe la sortie de vitre, préparation quand ta balle approche
       const fu = frames[0];
@@ -405,6 +456,9 @@ export function createGame(ctx) {
     get points() {
       return game.cur ? game.cur.pointsWon : [0, 0];
     },
+    get score() {
+      return game.cur ? M.scoreDisplay(game.cur) : null;
+    },
     start,
     pause,
     resume,
@@ -424,6 +478,11 @@ export function createGame(ctx) {
     },
     set debugInput(v) {
       game.debugInput = v;
+    },
+    /** Tests : attribue un point à une équipe (mêmes règles de score). */
+    debugAward(team) {
+      if (!game.cur) return;
+      game.cur = game.prev = M.awardPoint(game.cur, team);
     },
   };
 }

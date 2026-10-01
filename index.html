@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0b1219">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Glass Lab — Match infini : entraîne ta lecture des vitres au padel, en 3D.">
+  <meta name="description" content="Glass Lab — partie de padel en double, en 1re personne : entraîne ta lecture des vitres et ton choix de coup.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -27,6 +27,13 @@
   <div id="ui" class="ui" hidden>
     <div id="touch" class="touch"></div>
     <div id="streak" class="streak" aria-live="polite"><span id="streakVal">0</span><small>série</small></div>
+    <div id="score" class="score" aria-label="Score">
+      <div id="scoreUs" class="score-row"><span class="srv" aria-hidden="true"></span><b>Vous</b><span class="sets"></span><span class="games"></span><span class="pts"></span></div>
+      <div id="scoreThem" class="score-row"><span class="srv" aria-hidden="true"></span><b>Eux</b><span class="sets"></span><span class="games"></span><span class="pts"></span></div>
+      <div id="scoreNote" class="score-note" hidden></div>
+    </div>
+    <div id="banner" class="banner" hidden role="status" aria-live="polite"></div>
+    <div id="servePrompt" class="serve-prompt" hidden>À toi de servir : appuie sur Frappe</div>
     <button id="pauseBtn" class="icon-btn pause-btn" aria-label="Pause (Échap)">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
     </button>
@@ -42,12 +49,13 @@
     <div id="pointMsg" class="point-msg" hidden role="status" aria-live="polite"></div>
     <div id="call" class="call" hidden aria-live="polite"></div>
   </div>
+  <div id="fade" class="fade" aria-hidden="true"></div>
   <div id="fps" class="fps" hidden></div>
 
   <!-- Accueil -->
   <section id="home" class="screen home" hidden aria-labelledby="homeTitle">
     <h1 id="homeTitle" class="title">Glass<span>Lab</span></h1>
-    <p class="tagline">Match infini · lis les vitres, choisis ton coup</p>
+    <p class="tagline">Partie en double · lis les vitres, choisis ton coup</p>
     <button id="playBtn" class="btn-play">Jouer</button>
     <div class="home-icons">
       <button class="icon-btn labeled" data-open="stats" aria-label="Statistiques">
