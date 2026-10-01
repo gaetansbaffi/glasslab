@@ -1,6 +1,6 @@
 # Glass Lab — état des lieux après reconstruction
 
-> État au 1ᵉʳ octobre 2026 (effets et système de points ajoutés), dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
+> État au 1ᵉʳ octobre 2026 (effets, système de points, caméra calme, balles hautes ajoutés), dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
 > Le brief de reconstruction précédent (état du dépôt `glassmaster`, branche `claude/confident-curie-9n5fu8-jeu`) est dans l'historique git : commit `03ca104`.
 > Statut des informations : **[fait]** vérifié dans le code ou par les tests · **[à vérifier]** non vérifiable sans un vrai téléphone ou un joueur · **[reco]** recommandation.
 
@@ -20,8 +20,10 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 | 3. Service, score, coups avancés, calibrage | `d424d46` | service réel, score du padel, bandeja / víbora / smash / chiquita, test de calibrage |
 | 4. Effets de balle (demande après publication) | `4cafdb1` | coupé, lift, latéral en vol et aux rebonds ; effet par coup ; balle qui tourne ; étiquette et Détail |
 | 5. Vrai système de points (demande après publication) | `eff478a` | formats 1 set / 2 sets gagnants, super jeu décisif, fin de match, tableau de score, annonces, reprise |
+| 6. Caméra calme (retour du joueur) | `ddbbb7f` | tête plus lente, de profil au plus, regard posé sur le point de frappe, joystick par rapport au regard |
+| 7. Balles hautes (retour du joueur) | `510566b` | bandeja / víbora / smash pour toi, lob court des IA, ombre cerclée, point de chute au sol, mini-carte |
 
-`node test/run.js` : **111 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
+`node test/run.js` : **117 tests, 0 échec**. Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
 
 ## 3. Critères d'acceptation du brief (§9)
 
@@ -45,7 +47,7 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 - **Joystick par rapport au regard** (`geometry.viewRelativeMove`), à la place du repère du court imposé par le brief : haut = devant soi ; direction figée dès que le pouce pousse franchement et tant qu'il pousse, pour que la rotation de la caméra ne fasse pas dévier la course.
 - **Corps** : 16 pièces low-poly par joueur ; buste, bras, jambes et pieds visibles en regardant vers le bas ; ton ombre portée devant toi (soleil derrière ton équipe).
 - **Bras et raquette** : cinématique inverse à deux segments, la main tient la prise (test sur toutes les poses). Garde : haut du cadre visible en bas de l'écran, entre le centre et le bouton Frappe. Préparation : le tamis se présente du côté de la balle, à 0,45–0,85 m (la portée idéale). Geste synchronisé avec le contact ; en 1re personne, la main et la raquette restent à plus de 0,3 m des yeux (test).
-- **Lisibilité** : balle 2×, contour, ombre ronde, trait vers le sol, anneau de portée.
+- **Lisibilité** : balle 2×, contour, ombre ronde, trait vers le sol, anneau de portée ; sur les balles hautes, ombre cerclée, point de chute et mini-carte (§ 5.3).
 - **[à vérifier]** Le critère du brief — « juger sa position et la balle au moins aussi bien qu'en vue épaule à 110° » — dépend du ressenti d'un joueur : non vérifiable ici.
 
 ## 5. La partie à 4 [fait]
@@ -70,6 +72,15 @@ Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans l
 - **Enjeux et annonces** : balle de break, de set, de match (pour vous / pour eux), point en or, jeu décisif ; annonce de l'arbitre après chaque point, **score du serveur en premier** (« 30-15 », « 15 partout », « 40 partout · point en or »), avec la raison du point ; « Jeu · vous », « Set · eux · 6-4 », « Jeu, set et match ».
 - **Interface** : tableau de score type télévision en haut à gauche ; accueil avec le format, « Reprendre » (match sauvegardé à chaque point, relu et validé au chargement) et « Nouveau match » ; écran de fin (victoire ou défaite, score par set, points, tes indicateurs) ; bilan des matchs dans Stats. Le compteur « série » quitte l'écran de jeu (il reste dans la pause et les stats).
 - **Durée mesurée** (joueur automatique qui laisse passer 1 balle sur 4, niveau 3) : **1 set en 15 à 27 min de jeu** (6-1, 4-6, 7-5). Au niveau 1, le jeu tourne à 75 % du temps réel : compter un tiers de plus. Un match en 2 sets gagnants équilibré devrait durer 30 à 50 min (estimation, non mesurée sur un match serré).
+
+### 5.3 Balles hautes : coups au-dessus de la tête et lisibilité [fait]
+
+- **Retour du joueur** : « les balles hautes sont très dures à comprendre, donc les bandejas et smashs très compliqués ». Deux causes : tu n'avais **pas de coup au-dessus de la tête** (une balle au-dessus de 2 m se jouait après le rebond) ; et en 1re personne, quand le regard monte vers un lob (jusqu'à 40°, avec 66° de champ vertical en paysage), **le bas de l'écran passe au-dessus de l'horizon** : le sol, ton ombre et le point de chute sortent du champ au moment où il faut se placer.
+- **Coup au-dessus de la tête** (`zones.overhead`) : contact avant le rebond entre 1,9 et 3,1 m (idéal 2,3 à 2,8 m), portée 1 m, balle à 0,35 m sur le côté et 0,3 m devant toi. Renvoi automatique : **bandeja** par défaut, **víbora** une fois sur trois sur un bon coup (qualité ≥ 0,6), **smash** sur une balle très bien jouée (qualité ≥ 0,8) à moins de 5 m du filet et prise à 2,45 m ou plus. Geste au-dessus de la tête, main et raquette hors des yeux (test) ; balle visible au contact sur 60 lobs courts simulés (test). Au retour de service, c'est une faute (comme une volée).
+- **Préférence tactique** (`userPrefer.attack`) : au filet, le meilleur choix ajoute +0,06 au coup au-dessus de la tête et +0,03 à la volée (garder le filet) ; le message affiche « bon choix » dès que ton coup est à moins de 0,1 du meilleur.
+- **Lob court des IA** (`styles.lobShort`) : 3,2 à 5,4 m de haut, il retombe entre 3,6 et 6,2 m de la vitre ; une IA remplace son lob par un lob court d'autant plus souvent que sa frappe est mauvaise (25 % à 70 %).
+- **Aides, du coup adverse au rebond** (≈ 2 s en médiane) : ombre plus foncée et cerclée de blanc ; **point de chute** (cible jaune au sol, dans le court) ; **mini-carte** (104 px, en haut à droite sous Pause, rayon 7 m) **orientée comme le joystick**, y compris quand sa direction est figée pendant la course : toi au centre avec l'anneau de portée, ton partenaire, la balle (plus grosse quand elle est haute), son trajet en pointillés jusqu'au point de chute (hors de la surface du court si elle sort) et un **cercle vert à ta place idéale pour le coup au-dessus de la tête** (même repère que le cercle vert du Détail). Le point de chute est calculé une fois par vol (`flight.landing`) et toujours d'accord avec l'arbitrage (test).
+- **Mesures** (6 parties de 5 min, joueur parfait, niveau 3) : balles hautes vers ton camp **18 % des frappes adverses** (83 sur 452), dont 49 pour toi, avec un smash possible sur 37. Sur tes 249 balles : coup au-dessus de la tête **meilleur choix 8 %**, possible 16 % ; 20 joués : **bandeja 12, víbora 5, smash 3**.
 
 ## 6. Calibrage (tableau du brief) [fait]
 
@@ -97,6 +108,8 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 - **Effets** : valeurs plausibles (≈ 3 à 32 tours/s), non mesurées sur de vrais joueurs ; rotation affichée ralentie ; étiquette d'effet = aide d'entraînement (un vrai joueur lit l'effet sur le geste adverse).
 - **Replacement entre deux points** : court fondu au noir, les 4 joueurs sont replacés pour le service (plus confortable en 1re personne qu'un déplacement automatique de la caméra).
 - **Ton renvoi reste automatique** (lob, balle de fond ou volée selon la situation et ta qualité) : le brief entraîne la décision, pas le geste.
+- **Aides aux balles hautes fortes** : la mini-carte dit où tombe la balle et où te placer. Contre-argument : un vrai joueur doit le lire seul, et le cercle vert apparaît dès qu'un smash est possible, même quand laisser rebondir serait meilleur (possible sur 16 % de tes balles, meilleur choix sur 8 %). Options si c'est trop facile : mini-carte réservée aux niveaux 1 à 3, ou point de chute seul.
+- **Seuils du renvoi au-dessus de la tête** (smash : qualité ≥ 0,8, à moins de 5 m du filet, contact ≥ 2,45 m ; víbora : qualité ≥ 0,6, une fois sur trois) et préférence au filet (+0,06) : non calibrés avec un entraîneur.
 - **Le partenaire est fiable** (≈ 2 fois moins de fautes que les adversaires) pour ne pas frustrer ; les adversaires peuvent gagner des points contre lui (≈ 15 % de ses balles ne sont pas forcément jouables).
 
 ## 8. Limites et dette connues [fait]
@@ -108,7 +121,7 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 - **Pas de contact raquette-balle** : la frappe est jugée sur la position et le moment d'appui.
 - **Heuristiques non calibrées avec des entraîneurs** : qualité, meilleur choix, choix des coups et fautes des IA.
 - **Joystick par rapport au regard** (choix du joueur, contre le brief) : la direction reste figée tant que le pouce pousse ; après une grande rotation de la caméra, il faut relâcher pour repartir dans la direction regardée.
-- **Pas de smash pour toi** : une balle au-dessus de 2 m se joue après le rebond.
+- **Pas de coup au-dessus de la tête après le rebond** (balle haute qui ressort de la vitre) : elle se joue en défense. Tu ne choisis pas entre bandeja, víbora et smash (automatique).
 - **`src/core` alloue de petits objets à chaque pas** (états immuables, 4 joueurs) ; la génération d'une balle à la frappe adverse coûte ≈ 0,4 ms en médiane et jusqu'à ≈ 9 ms au pire sur PC (≈ 4 fois plus sur téléphone : une image sautée possible, rarement).
 - `rally.js` (duel d'origine) n'est plus utilisé par le jeu ; il est conservé car testé et réutilisé (motifs de perte).
 - **Publication** : chaque envoi publie après les tests ; une version plus ancienne que celle en ligne n'est jamais republiée (cas vécu : la création de `main` sur le commit d'import avait remis l'ancien jeu en ligne) ; une republication sans nouveau code passe par « Run workflow » ou une étiquette `publication-*` (droits du propriétaire du dépôt : l'accès de Claude Code est refusé, 403) ; la version en ligne s'affiche en bas de l'accueil.
@@ -126,6 +139,7 @@ Rythme : ≈ 10 frappes et ≈ 22 s par point avec un joueur qui laisse passer u
 8. Son, vibration, Wake Lock, pause automatique quand l'application passe en arrière-plan.
 9. **Effets** : l'étiquette (« Balle coupée »…) se lit sans gêner ; la rotation de la balle se voit quand elle approche ; une balle coupée reste basse après la vitre, une liftée sort haut (ressenti de joueur).
 10. **Score** : tableau lisible en plein jeu sur un petit écran ; annonces compréhensibles (« 15-30 » serveur d'abord) ; fin de match et écran de fin ; **Reprendre** après avoir fermé l'application (le match reprend au même score).
+11. **Balles hautes** : la mini-carte se lit d'un coup d'œil sans gêner (taille, place sous Pause) ; pousser le pouce vers le cercle vert y mène ; le point de chute au sol aide quand il est visible ; bandeja et smash réussis sur un lob court ; trop ou pas assez d'aide ?
 
 ## 10. Suites possibles [reco]
 
