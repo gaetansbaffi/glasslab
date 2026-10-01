@@ -388,3 +388,50 @@ test('match au format 1 set : fin de match, plus de service ; reprise d’un mat
   assert(JSON.stringify([a.points, a.games, a.sets, a.server, a.side]) === JSON.stringify([b.points, b.games, b.sets, b.server, b.side]), 'même score, même serveur');
   assert(again.score.bestOf === 3 && again.phase === 'serve', 'format du match sauvegardé conservé');
 });
+
+test('tes coups au-dessus de la tête en partie : bandeja, víbora ou smash (joueur parfait)', () => {
+  let overheads = 0;
+  const styles = {};
+  for (const seed of [1, 2, 3]) {
+    play(seed, 200, perfect, (prev, st) => {
+      for (const e of st.events) {
+        if (e.type !== 'userHit' || e.result.type !== 'overhead') continue;
+        overheads++;
+        styles[e.result.returnStyle] = (styles[e.result.returnStyle] || 0) + 1;
+      }
+    });
+  }
+  assert(overheads >= 4, 'coups au-dessus de la tête : ' + overheads);
+  assert(Object.keys(styles).every((k) => ['bandeja', 'vibora', 'smash'].includes(k)), 'renvois : ' + JSON.stringify(styles));
+});
+
+test('balles hautes vers ton camp : point de chute = premier rebond, ou derrière la vitre si la balle sort', () => {
+  // Lob de l'équipe du haut : il retombe dans le court ; trop long, il touche la vitre de fond avant le sol
+  const lob = (vy, spin) => F.makeFlight(Object.assign({ x: 5, y: 18, z: 1, vx: 0, vy, vz: 9 }, spin || {}), 1);
+  const short = lob(-8);
+  const inside = F.landing(short);
+  const floor = short.sim.contacts.find((c) => c.type === 'floor');
+  assert(!inside.out && inside.x === floor.pos.x && inside.y === floor.pos.y && inside.t === floor.t, 'rebond dans le court');
+  assert(Math.abs(inside.y - 2.5) < 0.15 && inside.t === short.verdict.bounceAt, 'lob qui retombe vers 2,5 m : ' + inside.y);
+  const long = lob(-10);
+  const out = F.landing(long);
+  assert(long.verdict.reason === 'out' && out.out && out.y < 0, 'lob trop long : point de chute derrière la vitre, ' + out.y);
+  assert(out.t === long.verdict.t, 'aide affichée jusqu’au choc contre la vitre');
+  const lifted = F.landing(lob(-8, P.spinVector(0, -1, 120, 0)));
+  assert(!lifted.out && lifted.y > inside.y + 0.1, 'lift : la balle plonge et tombe plus court');
+  assert(F.landing(F.makeFlight({ x: 5, y: 18, z: 1, vx: 0, vy: -3, vz: 1 }, 1)) === null, 'balle qui ne passe pas le filet : pas de point de chute');
+  // En partie : toujours d'accord avec l'arbitrage du vol (rebond valide, ou faute « dehors »)
+  let high = 0;
+  for (const seed of [1, 2]) {
+    play(seed, 150, perfect, (prev, st) => {
+      const f = st.flight;
+      if (!f || f === prev.flight || f.recv !== 0 || f.serve || F.apex(f) < CFG.view.highBall) return;
+      const l = F.landing(f);
+      if (!l) return;
+      high++;
+      if (f.verdict.bounceAt != null) assert(!l.out && l.t === f.verdict.bounceAt, 'rebond du vol');
+      else if (f.verdict.reason === 'out') assert(l.out && (l.x < 0 || l.x > P.COURT.width || l.y < 0), 'balle dehors : ' + JSON.stringify(l));
+    });
+  }
+  assert(high >= 8, 'balles hautes vers ton camp : ' + high);
+});

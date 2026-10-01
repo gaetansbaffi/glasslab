@@ -109,7 +109,8 @@ test('coups des IA : smash seulement au filet, lob face à des joueurs au filet,
   const back = count({ type: 'overhead', z: 2.4, y: 3, oppMode: 'attack', level: 5 }, 400);
   assert(!back.smash, 'pas de smash du fond : ' + JSON.stringify(back));
   const defense = count({ type: 'afterGlass', z: 1.0, y: 1.5, oppMode: 'attack', level: 3 }, 400);
-  assert(defense.lob > 80 && defense.chiquita > 60 && defense.defense > 80, 'défense face au filet : ' + JSON.stringify(defense));
+  const lobs = (defense.lob || 0) + (defense.lobShort || 0);
+  assert(lobs > 80 && defense.lobShort > 15 && defense.lob > 30 && defense.chiquita > 60 && defense.defense > 80, 'défense face au filet : ' + JSON.stringify(defense));
   for (let i = 0; i < 300; i++) {
     const o = { type: ['volley', 'halfVolley', 'beforeGlass', 'afterGlass', 'overhead'][i % 5], z: 0.2 + (i % 13) * 0.22, y: 1 + (i % 9), oppMode: i % 2 ? 'attack' : 'defense', level: 1 + (i % 5) };
     const st = T.chooseStyle(o, rng);
@@ -144,4 +145,16 @@ test('ton renvoi : meilleure qualité = plus profond, lob du fond face au filet,
   // Vers le côté le moins couvert (adversaire seul à gauche du repère adverse)
   const r = T.userReturn({ quality: 0.95, type: 'afterGlass', z: 1, y: 2, oppMode: 'defense', opponents: [{ x: 2.5, y: 2.4 }, { x: 4.5, y: 2.4 }] }, rng);
   assert(r.zone.x[0] > 5, 'côté libre : ' + JSON.stringify(r.zone.x));
+});
+
+test('ton renvoi au-dessus de la tête : bandeja le plus souvent, víbora parfois, smash près du filet sur une balle haute bien frappée', () => {
+  const rng = P.mulberry32(4);
+  const c = {};
+  for (let i = 0; i < 200; i++) {
+    const r = T.userReturn({ quality: 0.7, type: 'overhead', z: 2.4, y: 4, oppMode: 'defense', opponents: [] }, rng, CFG);
+    c[r.style] = (c[r.style] || 0) + 1;
+  }
+  assert(c.bandeja > 100 && c.vibora > 20 && !c.smash, JSON.stringify(c));
+  const s = T.userReturn({ quality: 0.92, type: 'overhead', z: 2.7, y: 6.8, oppMode: 'defense', opponents: [] }, rng, CFG);
+  assert(s.style === 'smash' && s.zone.y[0] >= CFG.styles.smash.depth[0], 'smash : ' + JSON.stringify(s));
 });

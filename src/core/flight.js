@@ -125,6 +125,26 @@ function apex(flight) {
   return G.ballistic(s, tTop, flight.sim.params.g).z;
 }
 
+/**
+ * Point de chute chez le receveur (repère monde), pour l'aide aux balles hautes : premier contact après
+ * le passage du filet. Rebond au sol → ce rebond ; vitre ou grillage d'abord (balle dehors) → point où
+ * la balle tomberait sans la vitre, hors du court. null si la balle ne passe pas le filet.
+ * Retourne { x, y, t (instant τ du rebond ou du choc contre la vitre), out }.
+ */
+function landing(flight) {
+  if (flight.cross == null) return null;
+  const sim = flight.sim;
+  const c = sim.contacts.find((k) => k.t > flight.cross && k.type !== 'cord');
+  if (!c) return null;
+  if (c.type === 'floor') return c.side === flight.recv ? { x: c.pos.x, y: c.pos.y, t: c.t, out: false } : null;
+  const s = P.stateAt(sim, Math.max(flight.cross, c.t - 1e-6));
+  const g = sim.params.g;
+  const ge = g - (s.az || 0);
+  const h = s.z - sim.params.radius;
+  const p = G.ballistic(s, (s.vz + Math.sqrt(Math.max(0, s.vz * s.vz + 2 * ge * h))) / ge, g);
+  return { x: p.x, y: p.y, t: c.t, out: true };
+}
+
 const Flight = {
   SIM_OPTS,
   sideOf,
@@ -138,6 +158,7 @@ const Flight = {
   tauOfShot,
   launchKmh,
   apex,
+  landing,
 };
 
 export default Flight;

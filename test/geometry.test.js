@@ -212,3 +212,25 @@ test('joystick par rapport au regard : haut = devant toi, direction figée penda
   v = G.viewRelativeMove(f, { x: 0.6, y: -0.8 }, 2.1, o);
   near(Math.hypot(v.x, v.y), 1, 1e-12);
 });
+
+test('mini-carte : repère du joystick (inverse du déplacement par rapport au regard)', () => {
+  const o = { lockOn: 0.45, lockOff: 0.3 };
+  const rng = P.mulberry32(21);
+  for (let i = 0; i < 200; i++) {
+    const yaw = (rng() * 2 - 1) * Math.PI;
+    const stick = { x: rng() * 1.2 - 0.6, y: rng() * 1.2 - 0.6 };
+    const move = G.viewRelativeMove({ ref: null }, stick, yaw, o);
+    const back = G.toStickFrame(move.x, move.y, yaw);
+    near(back.x, stick.x, 1e-12);
+    near(back.y, stick.y, 1e-12);
+  }
+  // Regard vers la paroi de droite : le filet (+y) est à gauche sur la carte, la paroi droite en haut
+  const net = G.toStickFrame(0, 1, Math.PI / 2);
+  near(net.x, -1, 1e-12);
+  near(net.y, 0, 1e-12);
+  // Course engagée : la carte garde l'orientation figée du joystick
+  const f = { ref: null };
+  G.viewRelativeMove(f, { x: 0, y: 1 }, 0.3, o);
+  near(G.moveReference(f, 1.4), 0.3, 1e-12);
+  near(G.moveReference({ ref: null }, 1.4), 1.4, 1e-12);
+});

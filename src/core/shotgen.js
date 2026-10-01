@@ -335,7 +335,7 @@ function familyZone(family, side, style, cfg) {
  *   style (config.styles) ; zone { x, y } (repère du receveur) ou family + side (balle d'entraînement) ;
  *   receiver : { pos { x, y } (monde), config (lois de déplacement du receveur), playable, noVolley } : la
  *              balle doit être jouable par lui (meilleur choix ≥ playable) — facultatif ;
- *   level, seed, config, extra (champs ajoutés au vol)
+ *   level, seed, config, extra (champs ajoutés au vol), knownFamily (refuser les trajectoires hors familles)
  * }
  * Retourne un vol (flight.js) valide — la balle passe le filet et rebondit chez le receveur —, avec
  * .shot (balle vue par le receveur, .family, .best si receiver), ou null.
@@ -360,14 +360,15 @@ function generateTo(o) {
     const half = P.simulate(c.net, { maxFloorBounces: 2, tMax: 6 });
     if (!half.contacts.length || half.contacts[0].type !== 'floor') continue; // dehors : vitre avant le rebond
     const family = F.familyOf(half);
-    if (!family) continue; // trajectoire hors des familles (ex. deux fois la même vitre) : écartée
+    // Balle pour toi : toujours d'une famille connue (stats, répétition espacée) ; ailleurs (smash gagnant…), peu importe
+    if (!family && (o.family || o.knownFamily)) continue;
     if (o.family) {
       if (family !== o.family) continue;
       if (family === 'direct' ? half.endReason !== 'floor' : !glassPlausible(half, family, st.apex[1])) continue;
     }
     const shot = { init: c.net, sim: half, tStart: -c.tn, endT: half.endT, family };
     if (recvPos) {
-      const best = Q.bestChoice(shot, recvPos, o.receiver.config || cfg, { noVolley: !!o.receiver.noVolley });
+      const best = Q.bestChoice(shot, recvPos, o.receiver.config || cfg, { noVolley: !!o.receiver.noVolley, prefer: o.receiver.prefer });
       if (!best.best || best.best.quality < playable) continue;
       shot.best = best;
     }

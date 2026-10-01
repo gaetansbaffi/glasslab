@@ -152,7 +152,7 @@ function aiIntercept(shot, from, mode, cfg, opts) {
     if (b.floorBounces >= 2) break;
     if (noVolley && b.floorBounces === 0) continue; // retour de service : on laisse rebondir
     let type = Q.classifyShot(b, cfg);
-    let zn = cfg.zones[type];
+    let zn = type === 'overhead' ? oh : cfg.zones[type];
     if ((type === 'volley' || type === 'beforeGlass' || type === 'afterGlass') && b.z > zn.zMax && b.z <= oh.zMax) {
       type = 'overhead';
       zn = oh;
@@ -193,7 +193,7 @@ function pick(list, rng) {
 
 /**
  * Coup d'une IA selon sa position et la balle reçue.
- * o = { type (de interception), z (hauteur de contact), y (distance à sa vitre), oppMode, level }
+ * o = { type (de interception), z (hauteur de contact), y (distance à sa vitre), oppMode, level, quality }
  */
 function chooseStyle(o, rng, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
@@ -211,7 +211,10 @@ function chooseStyle(o, rng, cfg) {
   }
   // Le coup doit être jouable à cette hauteur de contact
   const ok = list.filter(([s]) => o.z >= cfg.styles[s].contact[0] && o.z <= cfg.styles[s].contact[1]);
-  return ok.length ? pick(ok, rng) : o.type === 'overhead' ? 'bandeja' : o.z > 1.9 ? 'volley' : 'drive';
+  const style = ok.length ? pick(ok, rng) : o.type === 'overhead' ? 'bandeja' : o.z > 1.9 ? 'volley' : 'drive';
+  // Lob raté ou sous pression : il retombe court, au milieu du court (bandeja ou smash pour le filet)
+  if (style === 'lob' && rng() < 0.25 + 0.45 * (1 - clamp(o.quality == null ? 0.7 : o.quality, 0, 1))) return 'lobShort';
+  return style;
 }
 
 /**
@@ -242,13 +245,18 @@ function userReturn(o, rng, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   const q = clamp(o.quality, 0, 1);
   let style = 'drive';
-  if ((o.type === 'volley' || o.type === 'halfVolley') && o.y >= 6.2) style = 'volley';
+  if (o.type === 'overhead') {
+    // Au-dessus de la tête : smash si la balle est haute, près du filet et bien frappée ; víbora de temps
+    // en temps sur une bonne frappe ; sinon bandeja (contrôle, balle coupée vers le fond)
+    style = q >= 0.8 && o.y >= 5.0 && o.z >= 2.45 ? 'smash' : q >= 0.6 && rng() < 0.3 ? 'vibora' : 'bandeja';
+  } else if ((o.type === 'volley' || o.type === 'halfVolley') && o.y >= 6.2) style = 'volley';
   else if (o.y < 5.5 && o.oppMode === 'attack' && q >= 0.55 && o.z <= cfg.styles.lob.contact[1]) style = 'lob';
   if (o.z > cfg.styles[style].contact[1] || o.z < cfg.styles[style].contact[0]) style = o.z > 1.9 ? 'volley' : 'drive';
   const depth = cfg.styles[style].depth;
   let y;
   if (style === 'lob') y = 3.3 - 2.2 * q;
   else if (style === 'volley') y = 6.0 - 3.8 * q;
+  else if (style === 'smash') y = 7.5 - 3.0 * q; // smash : rebond au milieu du court adverse, qui file vers la vitre
   else y = 7.0 - 5.0 * q;
   y = clamp(y + (rng() - 0.5) * 0.8 * (1.2 - q), depth[0], depth[1]);
   // Côté le moins couvert, plus précis si la frappe est bonne

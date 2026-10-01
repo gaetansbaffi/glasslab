@@ -9,6 +9,7 @@
 import CFG from '../core/config.js';
 import G from '../core/geometry.js';
 import P from '../core/physics.js';
+import F from '../core/flight.js';
 import Q from '../core/quality.js';
 import M from '../core/match.js';
 import PL from '../core/players.js';
@@ -25,11 +26,16 @@ const USER_HOP = { splitDuration: 0.16, hop: 0.022 }; // ton split-step : visuel
 const SWING_LEAD = B.CONTACT_AT * 0.3; // le geste commence ≈ 0,17 s avant le contact
 const MATCH_END_MS = 2200; // annonce « Jeu, set et match » avant l'écran de fin
 
+/** Ton geste selon le type de frappe. */
+function userStroke(type) {
+  return type === 'overhead' ? 'overhead' : type === 'volley' ? 'volley' : 'ground';
+}
+
 /** Geste correspondant au coup joué. */
 function strokeOf(style, type) {
   if (type === 'overhead' || style === 'bandeja' || style === 'vibora' || style === 'smash') return 'overhead';
   if (style === 'volley') return 'volley';
-  if (style === 'lob') return 'lob';
+  if (style === 'lob' || style === 'lobShort') return 'lob';
   if (style === 'serve') return 'serve';
   return 'ground';
 }
@@ -316,11 +322,11 @@ export function createGame(ctx) {
   function userSwing(events) {
     const clock = game.animClock;
     const hit = events.find((e) => e.type === 'userHit');
-    if (hit) return startSwing(user, clock, { aim: hit.result.ball, contactAt: clock, side: user.side, stroke: hit.result.type === 'volley' ? 'volley' : 'ground' });
+    if (hit) return startSwing(user, clock, { aim: hit.result.ball, contactAt: clock, side: user.side, stroke: userStroke(hit.result.type) });
     const u = M.userShot(game.cur);
     if (u && u.pending) {
       const b = Q.ballStateAt(u.shot, u.pending.t);
-      return startSwing(user, clock, { aim: b, contactAt: clock + (u.pending.t - u.t), side: user.side, stroke: b.floorBounces ? 'ground' : 'volley' });
+      return startSwing(user, clock, { aim: b, contactAt: clock + (u.pending.t - u.t), side: user.side, stroke: userStroke(Q.classifyShot(b, CFG)) });
     }
     // Frappe dans le vide : le geste part quand même vers la balle (ou devant soi)
     const ball = M.ballPosition(game.cur);
@@ -331,7 +337,7 @@ export function createGame(ctx) {
   /* ---------- Vue de jeu ---------- */
 
   const ballPos = { x: 0, y: 0, z: 0 };
-  const view = { ball: null, reach: null, pathT: null, best: null, mine: null };
+  const view = { ball: null, reach: null, pathT: null, best: null, mine: null, landing: null };
   const cam = { eye: user.eye, yaw: 0, pitch: 0, vFov: 70 };
   const frames = actors.map((a, i) => ({ x: 0, y: 0, vx: 0, vy: 0, ball: null, ahead: null, focus: null, incoming: null, hop: 0, crouchScale: i === 0 ? 0.4 : 1, lookAt: null, offHand: null }));
   const userFocus = { x: 0, y: 0, z: 0, w: 0 }; // point de frappe prévu, regardé juste avant de frapper
@@ -339,6 +345,37 @@ export function createGame(ctx) {
   const incomings = actors.map(() => ({ t: 0, z: 1, x: 0, y: 0 }));
   const callPos = { x: 0, y: 0, visible: false };
   const callHead = { x: 0, y: 0, z: 0 };
+  const highCache = new WeakMap(); // vol → point de chute d'une balle haute vers ton camp (ou null)
+  const map = { yaw: 0, range: CFG.view.mapRange, me: { x: 0, y: 0 }, partner: { x: 0, y: 0 }, ball: null, landing: null, smash: null };
+
+  /** Balle haute (lob) vers ton camp : son point de chute, calculé une fois par vol ; sinon null. */
+  function highLanding(f) {
+    if (!highCache.has(f)) highCache.set(f, f.recv === 0 && !f.serve && F.apex(f) >= CFG.view.highBall ? F.landing(f) : null);
+    return highCache.get(f);
+  }
+
+  /**
+   * Aides aux balles hautes, jusqu'au rebond : point de chute au sol (dans le court) et mini-carte orientée
+   * comme le joystick (toi au centre, ton partenaire, la balle, son point de chute, ta place pour un smash).
+   */
+  function highBallAids(s, ball, u) {
+    const land = s.phase === 'live' && s.flight && ball ? highLanding(s.flight) : null;
+    const high = land && game.animClock - s.flight.t0 < land.t ? land : null;
+    view.landing = high && !high.out ? high : null;
+    if (high) {
+      map.yaw = G.moveReference(game.moveFrame, user.look.gazeYaw);
+      map.me.x = frames[0].x;
+      map.me.y = frames[0].y;
+      map.partner.x = frames[1].x;
+      map.partner.y = frames[1].y;
+      map.ball = ball;
+      map.landing = high;
+      // Smash possible sur ta balle : la place idéale pour le frapper (comme le cercle vert du Détail)
+      const oh = u && u.shot.best.byType.overhead;
+      map.smash = oh && u.t < oh.t ? oh.pos : null;
+    }
+    hud.map(high ? map : null);
+  }
 
   function interpolatedBall(alpha, out) {
     const a = M.ballPosition(game.cur);
@@ -400,6 +437,8 @@ export function createGame(ctx) {
       });
       view.ball = null;
       view.reach = null;
+      view.landing = null;
+      hud.map(null);
     } else {
       const alpha = game.acc / STEP;
       game.animClock = s.clock - STEP + game.acc;
@@ -454,6 +493,7 @@ export function createGame(ctx) {
       fu.hop = device.reducedMotion ? 0 : PL.splitHop({ splitAt: game.userSplitAt }, game.animClock, USER_HOP);
       actors.forEach((a, i) => updateActor(a, frames[i], dtg, game.animClock));
       view.reach = user.pos;
+      highBallAids(s, ball, u);
     }
     view.pathT = null;
     view.best = null;
@@ -486,6 +526,7 @@ export function createGame(ctx) {
       stepGame(dt);
     }
     if (replay.active) {
+      hud.map(null);
       replay.frame(dt, aspect);
       if (!replay.active) gameView(dt, aspect);
     } else gameView(dt, aspect);

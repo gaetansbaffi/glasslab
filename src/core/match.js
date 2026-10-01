@@ -211,7 +211,7 @@ function assignReceiver(s) {
   s.lastReceivedShort = Object.assign({}, s.lastReceivedShort, { [team]: !!bounce && bounce.pos.y > 6.5 });
   if (id === 0) {
     const shot = f.shot;
-    if (!shot.best) shot.best = Q.bestChoice(shot, s.players[0], s.cfg, { noVolley: !!f.serve });
+    if (!shot.best) shot.best = Q.bestChoice(shot, s.players[0], s.cfg, { noVolley: !!f.serve, prefer: userPrefer(s) });
     if (!shot.best.best) {
       // Injouable pour toi : au service, c'est un ace (seul le receveur peut renvoyer le service) ;
       // en jeu (balle au centre partie de l'autre côté), ton partenaire la prend
@@ -242,7 +242,7 @@ function planAI(s, id, central) {
   }
   const rng = rngFor(s, 1);
   const oppMode = s.modes[1 - r.team];
-  const style = T.chooseStyle({ type: it.type, z: it.ball.z, y: it.ball.y, oppMode, level: s.level }, rng, s.cfg);
+  const style = T.chooseStyle({ type: it.type, z: it.ball.z, y: it.ball.y, oppMode, level: s.level, quality: it.quality }, rng, s.cfg);
   const role = r.team === 0 ? 'partner' : 'opponent';
   const error = rng() < T.errorChance({ role, quality: it.quality, style, level: s.level }, s.cfg);
   const tau = it.t + f.cross;
@@ -286,7 +286,7 @@ function errorFlight(s, origin, team, style, rng) {
 /** Styles de repli jouables à cette hauteur de contact (d'abord le style choisi). */
 function alternates(style, z, cfg) {
   const over = ['bandeja', 'vibora'];
-  const ground = ['drive', 'defense', 'lob', 'chiquita'];
+  const ground = ['drive', 'defense', 'lob', 'lobShort', 'chiquita'];
   const pool = over.includes(style) || style === 'smash' ? over : ground;
   return [style].concat(pool.filter((x) => x !== style && z >= cfg.styles[x].contact[0] - 0.15 && z <= cfg.styles[x].contact[1] + 0.15));
 }
@@ -298,7 +298,8 @@ function alternates(style, z, cfg) {
  */
 function opponentShot(s, origin, style, rng) {
   const cfg = s.cfg;
-  const base = { origin, team: 1, level: s.level, config: cfg };
+  // Balles vers ton équipe : toujours d'une famille connue (tu peux finir par la jouer : stats)
+  const base = { origin, team: 1, level: s.level, config: cfg, knownFamily: true };
   const toUser = rng() < cfg.training.userShare;
   const seed = SG.mixSeed(s.seed, 5000 + s.index);
   const styles = alternates(style, origin.z, cfg);
@@ -310,10 +311,16 @@ function opponentShot(s, origin, style, rng) {
     if (f) return f;
   }
   if (toUser) {
-    const receiver = { pos: s.players[0], config: cfg };
+    const receiver = { pos: s.players[0], config: cfg, prefer: userPrefer(s) };
     const first = SG.pickFamily(s.weights, rng);
     const order = [first].concat(SG.FAMILY_IDS.filter((f) => f !== first).sort((a, b) => SG.mixSeed(seed, SG.FAMILY_IDS.indexOf(a)) - SG.mixSeed(seed, SG.FAMILY_IDS.indexOf(b))));
     for (const st of styles) {
+      if (st === 'lobShort') {
+        // Lob court : il retombe au milieu du court, quelle que soit la famille de vitres qui suit
+        const f = SG.generateTo(Object.assign({}, base, { style: st, zone: zoneOf(userSide, st), receiver, seed: SG.mixSeed(seed, 4242), attempts: 80, extra: { target: 0 } }));
+        if (f) return f;
+        continue;
+      }
       for (const family of order) {
         const f = SG.generateTo(Object.assign({}, base, { style: st, family, side: userSide, receiver, seed: SG.mixSeed(seed, st.length * 31 + family.charCodeAt(0)), attempts: 40, extra: { target: 0 } }));
         if (f) return f;
@@ -351,7 +358,7 @@ function partnerShot(s, origin, style, rng) {
 /** Dernier recours : une balle de fond quelconque, valide. */
 function anyShot(s, origin, team, rng) {
   for (let k = 0; k < 6; k++) {
-    const f = SG.generateTo({ origin, team, style: k % 2 ? 'lob' : 'drive', zone: { x: [1, 9], y: [1.5, 7.5] }, level: 1, seed: SG.mixSeed(s.seed, 777 + s.index * 13 + k), config: s.cfg, attempts: 200 });
+    const f = SG.generateTo({ origin, team, style: k % 2 ? 'lob' : 'drive', zone: { x: [1, 9], y: [1.5, 7.5] }, level: 1, seed: SG.mixSeed(s.seed, 777 + s.index * 13 + k), config: s.cfg, attempts: 200, knownFamily: team === 1 });
     if (f) return f;
   }
   // Physiquement impossible (frappe sous le filet, collé à la vitre…) : la balle part dans le filet
@@ -366,6 +373,11 @@ function userZoneTimes(s, from, to, pos) {
   const dt = s.cfg.strike.sampleDt;
   for (let t = Math.max(from, shot.tStart); t < Math.min(to, shot.endT); t += dt) if (Q.inZone(Q.ballStateAt(shot, t), pos, s.cfg)) out.push(t);
   return out;
+}
+
+/** Préférence tactique de ton meilleur choix : au filet, garder le filet (config.userPrefer). */
+function userPrefer(s) {
+  return (s.cfg.userPrefer && s.cfg.userPrefer[s.modes[0]]) || null;
 }
 
 /** Contexte du double au moment de ta frappe (quality.js) : alignement avec ton partenaire, ton côté. */
@@ -425,7 +437,7 @@ function userHit(s, tc, pos, overshoot) {
   };
   u.pending = null;
   const contact = F.ballAt(s.flight, tc + s.flight.cross);
-  if (s.flight.serve && q.type === 'volley') {
+  if (s.flight.serve && (q.type === 'volley' || q.type === 'overhead')) {
     // Le retour de service doit rebondir : volée = faute
     userMiss(s, 'serveVolley', { type: result.type, quality: result.quality, contactT: tc, ball: b, placementError: result.placementError });
     return;
@@ -451,6 +463,13 @@ function userHit(s, tc, pos, overshoot) {
   const opponents = [2, 3].map((i) => toTeam(1, s.players[i]));
   const ret = T.userReturn({ quality: q.score, type: q.type, z: contact.z, y: pos.y, oppMode: s.modes[1], opponents }, rng, cfg);
   let flight = SG.generateTo({ origin: contact, team: 0, style: ret.style, zone: ret.zone, level: ret.level, seed: SG.mixSeed(s.seed, 3000 + s.index), config: cfg, attempts: 120 });
+  // Au-dessus de la tête : on reste sur un coup au-dessus de la tête, vers une zone plus large
+  if (!flight && q.type === 'overhead') {
+    for (const st of ['bandeja', 'vibora', 'smash']) {
+      flight = SG.generateTo({ origin: contact, team: 0, style: st, zone: { x: [1, 9], y: cfg.styles[st].depth }, level: ret.level, seed: SG.mixSeed(s.seed, 3200 + s.index + st.length), config: cfg, attempts: 150 });
+      if (flight) break;
+    }
+  }
   if (!flight) flight = SG.generateTo({ origin: contact, team: 0, style: 'drive', zone: { x: [1, 9], y: [1.5, 7.5] }, level: ret.level, seed: SG.mixSeed(s.seed, 3100 + s.index), config: cfg, attempts: 300 });
   if (!flight) flight = anyShot(s, contact, 0, rng);
   result.returnStyle = flight.style;
@@ -612,7 +631,7 @@ function doServe(s) {
     else flight = SG.generateTo(Object.assign({}, base, { zone: { x: box.x, y: [1.2, 2.8] }, seed: seed ^ 0x51, attempts: 80 }));
   }
   if (!flight) {
-    const receiver = sv.receiver === 0 ? { pos: s.players[0], config: cfg, noVolley: true } : { pos: s.players[sv.receiver], config: T.aiConfig(cfg), noVolley: true, playable: 0.4 };
+    const receiver = sv.receiver === 0 ? { pos: s.players[0], config: cfg, noVolley: true, prefer: userPrefer(s) } : { pos: s.players[sv.receiver], config: T.aiConfig(cfg), noVolley: true, playable: 0.4 };
     if (sv.receiver === 0) {
       // Retour de service pour toi : famille de vitres selon la répétition espacée, si le carré le permet
       const first = SG.pickFamily(s.weights, rng);
@@ -622,7 +641,7 @@ function doServe(s) {
         if (flight) break;
       }
     }
-    if (!flight) flight = SG.generateTo(Object.assign({}, base, { zone: box, receiver, seed: seed ^ 0x77, attempts: 200 }));
+    if (!flight) flight = SG.generateTo(Object.assign({}, base, { zone: box, receiver, knownFamily: sv.receiver === 0, seed: seed ^ 0x77, attempts: 200 }));
     if (!flight) flight = SG.generateTo(Object.assign({}, base, { zone: box, seed: seed ^ 0x99, attempts: 300 }));
     if (flight) flight.target = sv.receiver === 0 ? 0 : sv.receiver === 1 ? 1 : 2;
   }

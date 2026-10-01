@@ -8,7 +8,7 @@ import SC from './score.js';
 export const SCHEMA_VERSION = 3;
 export const FORMAT_IDS = ['1set', '3sets'];
 export const MATCH_FAMILIES = ['direct', 'A', 'B', 'C', 'D'];
-export const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass'];
+export const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass', 'overhead'];
 const MAX_BALLS = 5000;
 
 /** Bilan cumulé des parties en double : [gagnés, perdus] pour les points, jeux, sets et matchs. */

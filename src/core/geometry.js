@@ -180,11 +180,26 @@ function viewRelativeMove(frame, stick, viewYaw, o) {
   if (frame.ref == null) {
     if (m >= o.lockOn) frame.ref = viewYaw;
   } else if (m < o.lockOff) frame.ref = null;
-  const yaw = frame.ref == null ? viewYaw : frame.ref;
+  const yaw = moveReference(frame, viewYaw);
   const s = Math.sin(yaw);
   const c = Math.cos(yaw);
   // devant = (sin, cos), droite = (cos, −sin) dans le repère du court
   return { x: stick.x * c + stick.y * s, y: -stick.x * s + stick.y * c };
+}
+
+/** Lacet de référence actuel du joystick (figé pendant la course, sinon celui du regard). */
+function moveReference(frame, viewYaw) {
+  return frame.ref == null ? viewYaw : frame.ref;
+}
+
+/**
+ * Inverse de viewRelativeMove : vecteur du court (dx, dy) → repère du joystick (x = droite, y = devant)
+ * pour le lacet `yaw`. Sert à la mini-carte : pousser le pouce vers un repère de la carte y mène.
+ */
+function toStickFrame(dx, dy, yaw) {
+  const s = Math.sin(yaw);
+  const c = Math.cos(yaw);
+  return { x: dx * c - dy * s, y: dx * s + dy * c };
 }
 
 /**
@@ -278,6 +293,8 @@ const Geometry = {
   joystickVector,
   keyboardVector,
   viewRelativeMove,
+  moveReference,
+  toStickFrame,
   ballistic,
   preNetDuration,
 };

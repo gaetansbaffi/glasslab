@@ -40,6 +40,10 @@ const CONFIG = {
     maxBack: 1.6, // le regard ne se retourne pas au-delà de ≈ 92° du filet : on se met de profil, la vitre reste au bord du champ
     focusFrom: 0.3, // dans les 0,3 dernières secondes avant la frappe prévue, le regard est posé sur le point de frappe…
     focusTo: 0.8, // … et s'y déplace progressivement à partir de 0,8 s avant
+    // Balle haute (lob) vers ton camp : quand on la regarde, le sol sort du champ. Aides jusqu'au rebond :
+    // point de chute au sol et mini-carte (toi, la balle, son point de chute, ta place pour un smash)
+    highBall: 3.0, // hauteur maximale (m) à partir de laquelle une balle est « haute »
+    mapRange: 7, // rayon de la mini-carte (m) autour de toi
   },
 
   // Joystick par rapport à ce que tu regardes. La direction est figée dès que le pouce pousse franchement
@@ -62,6 +66,9 @@ const CONFIG = {
     halfVolley: { zMin: 0.03, zMax: 0.4, ideal: [0.12, 0.35], reach: 1.2 },
     beforeGlass: { zMin: 0.35, zMax: 1.8, ideal: [0.8, 1.3], reach: 1.3 },
     afterGlass: { zMin: 0.35, zMax: 1.8, ideal: [0.8, 1.3], reach: 1.3 },
+    // Au-dessus de la tête, avant le rebond (bandeja, víbora, smash) : balle frappée un peu devant soi,
+    // du côté de la raquette, plus près du corps qu'un coup au sol
+    overhead: { zMin: 1.9, zMax: 3.1, ideal: [2.3, 2.8], reach: 1.0, lateral: [0.2, 0.55], lateralZero: 0, idealOffset: { lateral: 0.35, ahead: 0.3 } },
   },
 
   classify: {
@@ -143,6 +150,8 @@ const CONFIG = {
     drive: { name: 'Balle de fond', mode: 'net', net: [[2.0, 2.9], [1.15, 1.75]], depth: [1.2, 8.6], kmh: [38, 72], apex: [0, 3.6], contact: [0.3, 1.9], spin: { top: [-60, 90], side: [0, 25] } },
     defense: { name: 'Défense après vitre', mode: 'net', net: [[2.3, 3.2], [1.5, 2.4]], depth: [1.0, 8.0], kmh: [35, 70], apex: [0, 4.2], contact: [0.3, 1.9], spin: { top: [-110, 30], side: [0, 30] } },
     lob: { name: 'Lob', mode: 'net', net: [[5.1, 7.4], [4.7, 6.9]], depth: [0.6, 3.6], kmh: [28, 52], apex: [5.0, 8.5], contact: [0.2, 1.9], spin: { top: [20, 160], side: [0, 20] } },
+    // Lob court (raté ou sous pression) : retombe vers le milieu du court, à jouer au-dessus de la tête
+    lobShort: { name: 'Lob court', mode: 'net', net: [[3.3, 4.4], [3.1, 4.1]], depth: [3.6, 6.2], kmh: [22, 46], apex: [3.2, 5.4], contact: [0.2, 1.9], spin: { top: [0, 110], side: [0, 20] } },
     chiquita: { name: 'Chiquita', mode: 'net', net: [[1.05, 1.4], [0.98, 1.25]], depth: [6.4, 9.3], kmh: [22, 48], apex: [0, 2.2], contact: [0.2, 1.5], spin: { top: [-40, 80], side: [0, 20] } },
     volley: { name: 'Volée', mode: 'speed', speed: [[14, 18], [17, 22]], depth: [1.5, 8.6], kmh: [48, 82], apex: [0, 2.4], contact: [0.5, 1.95], spin: { top: [-170, -40], side: [0, 40] } },
     bandeja: { name: 'Bandeja', mode: 'speed', speed: [[13, 16.5], [15.5, 20]], depth: [0.8, 4.8], kmh: [45, 75], apex: [0, 3.2], contact: [1.8, 3.1], spin: { top: [-200, -90], side: [20, 70] } },
@@ -176,11 +185,15 @@ const CONFIG = {
   errors: {
     opponent: { base: 0.075, hard: 0.32 },
     partner: { base: 0.035, hard: 0.12 },
-    risk: { smash: 0.06, vibora: 0.04, chiquita: 0.03, lob: 0.02, bandeja: 0.015, volley: 0.01, drive: 0, defense: 0.01, serve: 0 },
+    risk: { smash: 0.06, vibora: 0.04, chiquita: 0.03, lob: 0.02, lobShort: 0.01, bandeja: 0.015, volley: 0.01, drive: 0, defense: 0.01, serve: 0 },
   },
   serveFaults: [0.08, 0.035], // fautes des serveurs IA : premier, deuxième service
   // Zone de frappe au-dessus de la tête (IA : bandeja, víbora, smash)
   overhead: { zMin: 1.9, zMax: 3.1, ideal: [2.3, 2.8], reach: 1.0 },
+
+  // Ton meilleur choix tient compte de la tactique : au filet, à qualité presque égale, on garde le filet
+  // (coup au-dessus de la tête, volée) plutôt que de laisser passer la balle. Bonus de comparaison seulement.
+  userPrefer: { attack: { overhead: 0.06, volley: 0.03 }, defense: {} },
 
   // Score : point en or à 40-40 (vrai) ou avantage (faux). Fixé par le jeu, pas de réglage.
   score: { golden: true },

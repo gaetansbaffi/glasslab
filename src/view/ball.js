@@ -4,6 +4,8 @@
  *   verticale de la balle, trait balle → sol, anneau de portée aux pieds du joueur.
  *   La balle porte sa couture blanche et tourne selon son effet (rotation ralentie pour rester lisible :
  *   un coupé roule vers l'arrière, un lift vers l'avant, un latéral tourne comme une toupie).
+ *   Balles hautes (lobs) : l'ombre reste nettement visible, cerclée de blanc, et le point de chute est
+ *   marqué au sol jusqu'au rebond.
  *   Dans le Détail seulement : trajectoire, meilleur point (vert), ta frappe (orange).
  */
 import * as THREE from 'three';
@@ -94,6 +96,24 @@ export function createBallView(scene, track) {
   const shadow = new THREE.Mesh(track(new THREE.CircleGeometry(0.085, 20)), shadowMat);
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
+
+  // Cercle autour de l'ombre d'une balle haute : sa position au sol se lit même de loin
+  const shadowRingMat = track(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+  const shadowRing = new THREE.Mesh(track(new THREE.RingGeometry(0.09, 0.11, 28)), shadowRingMat);
+  shadowRing.rotation.x = -Math.PI / 2;
+  scene.add(shadowRing);
+
+  // Point de chute d'une balle haute : cible jaune au sol jusqu'au rebond
+  const landing = new THREE.Group();
+  const landingMat = track(new THREE.MeshBasicMaterial({ color: COLORS.ball, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false }));
+  const landingRing = new THREE.Mesh(track(new THREE.RingGeometry(0.26, 0.33, 40)), landingMat);
+  const landingDot = new THREE.Mesh(track(new THREE.CircleGeometry(0.06, 16)), landingMat);
+  for (const m of [landingRing, landingDot]) {
+    m.rotation.x = -Math.PI / 2;
+    landing.add(m);
+  }
+  landing.visible = false;
+  scene.add(landing);
 
   // Trait vertical balle → sol : relie la balle à son ombre pour lire hauteur et profondeur
   const stem = new THREE.Mesh(
@@ -186,24 +206,35 @@ export function createBallView(scene, track) {
 
   /**
    * v = { ball: {x,y,z, wx?,wy?,wz?} | null, reach: {x,y} | null, pathT: number | null (Détail : trajectoire
-   *       jusqu'à t), best: { bx, by, bz, px, py } | null, mine: { bx, by, bz } | null } ; dt : durée de
-   *       l'image (s de jeu), pour faire tourner la balle selon son effet.
+   *       jusqu'à t), best: { bx, by, bz, px, py } | null, mine: { bx, by, bz } | null,
+   *       landing: { x, y } | null (point de chute d'une balle haute) } ; dt : durée de l'image (s de jeu),
+   *       pour faire tourner la balle selon son effet.
    */
   function update(v, dt) {
     const b = v.ball;
     ball.visible = shadow.visible = !!b;
     stem.visible = !!(b && b.z > 0.06);
+    shadowRing.visible = !!(b && b.z > 1.2);
     if (b) {
       if (b.wx !== undefined) spinBall(b, dt);
       G.worldToSceneInto(ball.position, b.x, b.y, b.z);
       G.worldToSceneInto(shadow.position, b.x, b.y, 0.006);
-      shadowMat.opacity = 0.55 * Math.max(0.3, 1 - b.z / 5);
-      shadow.scale.setScalar(1 + b.z * 0.2);
+      // Ombre lisible même sous un lob de 8 m (elle pâlit peu et grandit à peine)
+      shadowMat.opacity = 0.6 * Math.max(0.45, 1 - b.z / 10);
+      shadow.scale.setScalar(1 + b.z * 0.1);
+      if (shadowRing.visible) {
+        shadowRing.position.copy(shadow.position);
+        shadowRing.position.y += 0.002;
+        shadowRing.scale.setScalar(1 + b.z * 0.1);
+        shadowRingMat.opacity = Math.min(0.7, (b.z - 1.2) * 0.35);
+      }
       if (stem.visible) {
         G.worldToSceneInto(stem.position, b.x, b.y, 0);
         stem.scale.set(1, b.z, 1);
       }
     }
+    landing.visible = !!v.landing;
+    if (v.landing) G.worldToSceneInto(landing.position, v.landing.x, v.landing.y, 0.01);
     ring.visible = ringEdge.visible = !!v.reach;
     if (v.reach) {
       G.worldToSceneInto(ring.position, v.reach.x, v.reach.y, 0.008);

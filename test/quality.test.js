@@ -124,3 +124,22 @@ test('contexte du double : alignement avec le partenaire, côté couvert, consei
   const r = { outcome: 'miss', reason: 'late', reasonLabel: 'Trop tard', bestType: st.shot.best.bestType, bestQuality: st.shot.best.best.quality, doubles: d };
   assert(Q.explainBall(st.shot, r).lines.some((l) => /Double : ton équipe était au filet/.test(l)));
 });
+
+test('au-dessus de la tête : lob court au-dessus d’un joueur au filet → bandeja / smash, meilleur choix au filet', () => {
+  const base = { x: 5, y: 7, vx: 0, vy: -5 };
+  assert(Q.classifyShot(Object.assign({ z: 2.5, vz: -2, floorBounces: 0, wallHits: 0, tSinceBounce: null }, base)) === 'overhead');
+  assert(Q.classifyShot(Object.assign({ z: 1.5, vz: -2, floorBounces: 0, wallHits: 0, tSinceBounce: null }, base)) === 'volley');
+  assert(Q.classifyShot(Object.assign({ z: 2.5, vz: -2, floorBounces: 1, wallHits: 0, tSinceBounce: 0.4 }, base)) === 'beforeGlass', 'après le rebond : coup au sol');
+  // Lob court qui passe au-dessus d'un joueur au filet
+  const shot = makeShot({ x: 6, y: 10, z: 3.5 }, { x: 6.4, y: 5 }, 1.0);
+  const from = { x: 6.6, y: 7.3 };
+  const best = Q.bestChoice(shot, from, CFG, { prefer: CFG.userPrefer.attack });
+  const oh = best.byType.overhead;
+  assert(oh && oh.quality > 0.8 && oh.ball.z >= CFG.zones.overhead.zMin && oh.ball.floorBounces === 0, 'coup au-dessus de la tête possible : ' + (oh && oh.quality));
+  assert(best.bestType === 'overhead', 'au filet, le meilleur choix est au-dessus de la tête : ' + best.bestType);
+  // Au retour de service, la balle doit rebondir : interdit
+  assert(!Q.bestChoice(shot, from, CFG, { noVolley: true }).byType.overhead, 'pas de coup au-dessus de la tête au retour de service');
+  // La préférence tactique ne change pas les qualités rendues
+  const plain = Q.bestChoice(shot, from, CFG);
+  near(plain.byType.overhead.quality, oh.quality, 1e-12);
+});

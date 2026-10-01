@@ -11,12 +11,13 @@ import G from './geometry.js';
 import PL from './players.js';
 import DEFAULT_CONFIG from './config.js';
 
-const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass'];
+const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass', 'overhead'];
 const SHOT_NAMES = {
   volley: 'Volée',
   halfVolley: 'Demi-volée',
   beforeGlass: 'Avant vitre',
   afterGlass: 'Après vitre',
+  overhead: 'Bandeja / smash',
 };
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -51,14 +52,16 @@ function ballStateAt(shot, t) {
 
 /**
  * Type de coup selon l'état de la balle au contact :
+ *   overhead    : aucun rebond au sol, balle au-dessus de la tête (bandeja, víbora, smash)
  *   volley      : aucun rebond au sol
  *   afterGlass  : au moins un contact avec une paroi
  *   halfVolley  : juste après le rebond (≤ ~150 ms), balle basse (< 0,4 m) et montante
  *   beforeGlass : au moins un rebond, aucune paroi
  */
 function classifyShot(b, cfg) {
-  const c = (cfg || DEFAULT_CONFIG).classify;
-  if (!b.floorBounces) return 'volley';
+  cfg = cfg || DEFAULT_CONFIG;
+  const c = cfg.classify;
+  if (!b.floorBounces) return b.z >= cfg.zones.overhead.zMin ? 'overhead' : 'volley';
   if (b.wallHits > 0) return 'afterGlass';
   if (b.tSinceBounce != null && b.tSinceBounce <= c.halfVolleyWindow && b.z < c.halfVolleyMaxZ && b.vz > 0) return 'halfVolley';
   return 'beforeGlass';
@@ -92,13 +95,17 @@ function heightScore(type, z, cfg) {
 function placementScore(b, player, type, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   const pc = cfg.placement;
+  const zn = cfg.zones[type];
   const ahead = b.y - player.y;
   const lateral = Math.abs(b.x - player.x);
-  const reach = cfg.zones[type].reach;
+  const reach = zn.reach;
+  // Distance latérale idéale propre au coup (au-dessus de la tête : plus près du corps)
+  const latIdeal = zn.lateral || pc.lateral;
+  const latZero = zn.lateralZero != null ? zn.lateralZero : pc.lateralZero;
   const sa = trapezoid(ahead, pc.aheadZero[0], pc.ahead[0], pc.ahead[1], pc.aheadZero[1]);
-  const sl = trapezoid(lateral, pc.lateralZero, pc.lateral[0], pc.lateral[1], reach);
+  const sl = trapezoid(lateral, latZero, latIdeal[0], latIdeal[1], reach);
   const ea = ahead < pc.ahead[0] ? pc.ahead[0] - ahead : ahead > pc.ahead[1] ? ahead - pc.ahead[1] : 0;
-  const el = lateral < pc.lateral[0] ? pc.lateral[0] - lateral : lateral > pc.lateral[1] ? lateral - pc.lateral[1] : 0;
+  const el = lateral < latIdeal[0] ? latIdeal[0] - lateral : lateral > latIdeal[1] ? lateral - latIdeal[1] : 0;
   return { score: sa * sl, error: Math.hypot(ea, el), ahead, lateral };
 }
 
@@ -147,9 +154,10 @@ function shotQuality(b, player, ctx, cfg) {
 /* ---------- Meilleur choix ---------- */
 
 /** Position idéale du joueur pour frapper une balle en b, du côté le plus proche de `from`. */
-function idealPosition(b, from, cfg) {
+function idealPosition(b, from, cfg, type) {
   cfg = cfg || DEFAULT_CONFIG;
-  const o = cfg.placement.idealOffset;
+  const zn = type && cfg.zones[type];
+  const o = (zn && zn.idealOffset) || cfg.placement.idealOffset;
   const B = cfg.player.bounds;
   const cand = [-1, 1].map((sgn) => ({
     x: Math.max(B.xMin, Math.min(B.xMax, b.x + sgn * o.lateral)),
@@ -171,32 +179,35 @@ function timeMargin(shot, t, from, to, cfg) {
 
 /**
  * Meilleur point de frappe atteignable pour chaque type de coup, par échantillonnage de la trajectoire.
- * from = position du joueur au moment de la frappe adverse ; opts = { noVolley } (retour de service :
- * la balle doit rebondir avant d'être jouée).
+ * from = position du joueur au moment de la frappe adverse ; opts = { noVolley (retour de service : la
+ * balle doit rebondir avant d'être jouée), prefer: { type: bonus } (préférence tactique, pour départager
+ * des coups de qualité proche ; les qualités rendues ne changent pas) }.
  * Retourne { byType: { type: { quality, t, ball, pos, margin } | null }, bestType, best }.
  */
 function bestChoice(shot, from, cfg, opts) {
   cfg = cfg || DEFAULT_CONFIG;
   const dt = cfg.strike.sampleDt;
-  const byType = { volley: null, halfVolley: null, beforeGlass: null, afterGlass: null };
+  const byType = { volley: null, halfVolley: null, beforeGlass: null, afterGlass: null, overhead: null };
   // Jamais avant le passage du filet (t = 0)
   const t0 = Math.max(shot.tStart + cfg.player.reactionTime, 0);
   for (let t = t0; t < shot.endT; t += dt) {
     const b = ballStateAt(shot, t);
     if (b.floorBounces >= 2) break;
     const type = classifyShot(b, cfg);
-    if (opts && opts.noVolley && type === 'volley') continue;
+    if (opts && opts.noVolley && (type === 'volley' || type === 'overhead')) continue;
     const zn = cfg.zones[type];
     if (b.z < zn.zMin || b.z > zn.zMax) continue;
-    const pos = idealPosition(b, from, cfg);
+    const pos = idealPosition(b, from, cfg, type);
     if (Math.hypot(b.x - pos.x, b.y - pos.y) > zn.reach) continue;
     const margin = timeMargin(shot, t, from, pos, cfg);
     if (margin < 0) continue; // pas atteignable à temps
     const q = shotQuality(b, pos, { timeMargin: margin }, cfg);
     if (!byType[type] || q.score > byType[type].quality) byType[type] = { quality: q.score, t, ball: b, pos, margin, detail: q };
   }
+  const pref = (opts && opts.prefer) || {};
+  const value = (k) => byType[k].quality + (pref[k] || 0);
   let bestType = null;
-  for (const k of SHOT_TYPES) if (byType[k] && (!bestType || byType[k].quality > byType[bestType].quality)) bestType = k;
+  for (const k of SHOT_TYPES) if (byType[k] && (!bestType || value(k) > value(bestType))) bestType = k;
   return { byType, bestType, best: bestType ? byType[bestType] : null };
 }
 
@@ -249,7 +260,7 @@ function weakness(r, cfg) {
   if (k === 'placement') {
     const pl = placementScore(r.ball, r.player, r.type, cfg);
     if (pl.ahead < cfg.placement.ahead[0]) return 'la balle était déjà derrière toi';
-    if (pl.lateral < cfg.placement.lateral[0]) return 'trop collé à la balle';
+    if (pl.lateral < (zn.lateral || cfg.placement.lateral)[0]) return 'trop collé à la balle';
     return 'trop loin de la balle';
   }
   return 'balle rapide, peu de temps pour te placer';
@@ -278,6 +289,7 @@ const RULE_BY_BEST = {
   halfVolley: 'Rebond court et balle qui filerait vers la vitre : joue la demi-volée juste après le rebond, sans reculer.',
   beforeGlass: 'Balle qui rebondit loin de la vitre : joue-la avant la vitre, quand elle redescend à hauteur de hanche.',
   afterGlass: 'Laisse la vitre travailler : place-toi derrière la ligne de la balle, à distance de bras, et frappe quand elle redescend après la vitre.',
+  overhead: 'Balle haute qui passe au-dessus de toi : frappe-la avant le rebond, au-dessus de la tête, un peu devant toi et du côté de ta raquette (bandeja) ; smash si elle est courte et bien haute, près du filet.',
 };
 
 /**

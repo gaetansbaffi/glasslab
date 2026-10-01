@@ -4,6 +4,8 @@
  * Réglages : son et vibration, mode gaucher, données (3 au total) ; le format du match se choisit à l'accueil.
  */
 import Q from './core/quality.js';
+import P from './core/physics.js';
+import G from './core/geometry.js';
 import SG from './core/shotgen.js';
 import SC from './core/score.js';
 import Stats from './core/stats.js';
@@ -23,6 +25,25 @@ const MISS_HINT = {
   notReached: 'déplace-toi dès la frappe adverse',
   weak: 'mauvaise position : frappe ratée',
 };
+
+/** Mini-carte : lignes du court (m) — vitres, filet, lignes de service, ligne centrale. */
+const C = P.COURT;
+const MAP_LINES = [
+  { a: [0, 0], b: [C.width, 0], k: 'glass' },
+  { a: [0, 0], b: [0, C.length], k: 'glass' },
+  { a: [C.width, 0], b: [C.width, C.length], k: 'glass' },
+  { a: [0, C.length], b: [C.width, C.length], k: 'glass' },
+  { a: [0, C.depth], b: [C.width, C.depth], k: 'net' },
+  { a: [0, C.serviceLine], b: [C.width, C.serviceLine], k: 'line' },
+  { a: [0, C.length - C.serviceLine], b: [C.width, C.length - C.serviceLine], k: 'line' },
+  { a: [C.width / 2, C.serviceLine], b: [C.width / 2, C.length - C.serviceLine], k: 'line' },
+];
+const MAP_STYLE = {
+  glass: ['rgba(142, 203, 255, 0.75)', 1.5],
+  net: ['rgba(255, 255, 255, 0.95)', 2],
+  line: ['rgba(255, 255, 255, 0.35)', 1],
+};
+const MAP_REACH = 1.1; // anneau de portée (m), comme au sol
 
 const STAKES = { break: 'Balle de break', set: 'Balle de set', match: 'Balle de match' };
 const who = (team) => (team === 0 ? 'vous' : 'eux');
@@ -66,7 +87,8 @@ export function createHud() {
     if (r.outcome === 'miss') return { level: 'bad', icon: '✕', title: `${NAMES[r.type]} ${fmt(r.quality)} · dans le filet`, sub: why || MISS_HINT.weak };
     const level = r.quality >= cfg.quality.good ? 'good' : r.quality >= cfg.quality.ok ? 'ok' : 'bad';
     const icon = level === 'good' ? '✓' : level === 'ok' ? '~' : '!';
-    if (r.type === r.bestType) return { level, icon, title: `${NAMES[r.type]} ${fmt(r.quality)} · bon choix`, sub: why };
+    // Choix à moins de decisionTolerance du meilleur : bon choix aussi (pas de « mieux » pour 0,01)
+    if (r.type === r.bestType || r.decisionOk) return { level, icon, title: `${NAMES[r.type]} ${fmt(r.quality)} · bon choix`, sub: why };
     return { level, icon, title: `${NAMES[r.type]} ${fmt(r.quality)} · mieux : ${lower(r.bestType)} ${fmt(r.bestQuality)}`, sub: why };
   }
 
@@ -174,6 +196,121 @@ export function createHud() {
     el.hidden = false;
     clearTimeout(spinTimer);
     spinTimer = setTimeout(() => (el.hidden = true), 1300);
+  }
+
+  /* ----- Mini-carte des balles hautes : vue de dessus orientée comme le joystick (haut = devant toi) ----- */
+
+  const mapEl = $('ballMap');
+  const mapCtx = mapEl.getContext('2d');
+  let mapOn = false;
+
+  /**
+   * m = { yaw (lacet du joystick), range (m), me, partner, ball: {x,y,z}, landing: {x,y}, smash: {x,y} | null }
+   * ou null (carte masquée). Toi au centre ; pousser le pouce vers un repère de la carte y mène.
+   */
+  function map(m) {
+    if (!m) {
+      if (mapOn) mapEl.classList.remove('on');
+      mapOn = false;
+      return;
+    }
+    if (!mapOn) mapEl.classList.add('on');
+    mapOn = true;
+    const size = mapEl.clientWidth || 104;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const px = Math.round(size * dpr);
+    if (mapEl.width !== px) mapEl.width = mapEl.height = px;
+    const g = mapCtx;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, size, size);
+    const R = size / 2;
+    const k = (R - 6) / m.range; // px par mètre
+    const edge = R - 7; // repères trop loin : posés au bord de la carte
+    const at = (p, clamp) => {
+      const v = G.toStickFrame(p.x - m.me.x, p.y - m.me.y, m.yaw);
+      let x = v.x * k;
+      let y = v.y * k;
+      const l = Math.hypot(x, y);
+      if (clamp && l > edge) {
+        x *= edge / l;
+        y *= edge / l;
+      }
+      return { x: R + x, y: R - y };
+    };
+    const disc = (p, r, fill, stroke) => {
+      g.beginPath();
+      g.arc(p.x, p.y, r, 0, 2 * Math.PI);
+      if (fill) {
+        g.fillStyle = fill;
+        g.fill();
+      }
+      if (stroke) {
+        g.strokeStyle = stroke;
+        g.stroke();
+      }
+    };
+    g.save();
+    g.beginPath();
+    g.arc(R, R, R - 1, 0, 2 * Math.PI);
+    g.fillStyle = 'rgba(12, 20, 28, 0.66)';
+    g.fill();
+    g.clip();
+    // Surface du court (dehors = fond sombre) : un lob qui sort tombe hors de la surface
+    const corners = [at({ x: 0, y: 0 }), at({ x: C.width, y: 0 }), at({ x: C.width, y: C.length }), at({ x: 0, y: C.length })];
+    g.beginPath();
+    corners.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    g.closePath();
+    g.fillStyle = 'rgba(40, 110, 200, 0.45)';
+    g.fill();
+    g.lineCap = 'round';
+    for (const l of MAP_LINES) {
+      const a = at({ x: l.a[0], y: l.a[1] });
+      const b = at({ x: l.b[0], y: l.b[1] });
+      g.beginPath();
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.strokeStyle = MAP_STYLE[l.k][0];
+      g.lineWidth = MAP_STYLE[l.k][1];
+      g.stroke();
+    }
+    g.lineWidth = 1;
+    disc({ x: R, y: R }, MAP_REACH * k, 'rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.4)');
+    disc(at(m.partner, true), 3.5, 'rgba(255, 255, 255, 0.5)');
+    // Trajet au sol de la balle jusqu'à son point de chute
+    const ball = at(m.ball, true);
+    const land = at(m.landing, true);
+    g.setLineDash([3, 3]);
+    g.beginPath();
+    g.moveTo(ball.x, ball.y);
+    g.lineTo(land.x, land.y);
+    g.strokeStyle = 'rgba(242, 255, 31, 0.55)';
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.setLineDash([]);
+    g.lineWidth = 2;
+    disc(land, 5, null, '#f2ff1f');
+    disc(land, 1.6, '#f2ff1f');
+    if (m.smash) {
+      g.lineWidth = 2.5;
+      disc(at(m.smash, true), 5.5, 'rgba(46, 232, 138, 0.25)', '#2ee88a');
+    }
+    // La balle : plus elle est haute, plus le point est gros
+    g.lineWidth = 1.5;
+    disc(ball, 2.5 + Math.min(3.5, m.ball.z * 0.5), '#f2ff1f', '#2e3300');
+    // Toi : flèche vers le haut (devant toi, haut du joystick)
+    g.beginPath();
+    g.moveTo(R, R - 6.5);
+    g.lineTo(R + 4.5, R + 4);
+    g.lineTo(R - 4.5, R + 4);
+    g.closePath();
+    g.fillStyle = '#ffffff';
+    g.fill();
+    g.strokeStyle = '#0b1219';
+    g.lineWidth = 1;
+    g.stroke();
+    g.restore();
+    g.lineWidth = 1.5;
+    disc({ x: R, y: R }, R - 1, null, 'rgba(255, 255, 255, 0.55)');
   }
 
   /* ----- Score : tableau en haut à gauche ----- */
@@ -349,6 +486,7 @@ export function createHud() {
     call,
     placeCall,
     spinTag,
+    map,
     setScore,
     banner,
     servePrompt,

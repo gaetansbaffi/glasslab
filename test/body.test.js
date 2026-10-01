@@ -8,7 +8,8 @@ import P from '../src/core/physics.js';
 import CFG from '../src/core/config.js';
 import R from '../src/core/rally.js';
 import Q from '../src/core/quality.js';
-import { botInput } from './helpers.js';
+import { botInput, makeShot } from './helpers.js';
+import PL from '../src/core/players.js';
 
 section('Corps : tête, regard, bras et raquette');
 
@@ -270,6 +271,35 @@ test('la balle reste visible au moment de frapper (regard qui suit la balle, cha
   assert(visible === checked, `balle hors champ au contact : ${checked - visible} / ${checked}`);
 });
 
+test('coup au-dessus de la tête : la balle reste visible au contact (lobs courts vers un joueur au filet)', () => {
+  const f = fovs(2.17);
+  const rng = P.mulberry32(5);
+  let checked = 0;
+  let visible = 0;
+  for (let i = 0; i < 300 && checked < 60; i++) {
+    const from = { x: 5.5 + rng() * 3.5, y: 6.6 + rng() * 1.2 };
+    const shot = makeShot({ x: 2 + rng() * 6, y: 10, z: 3.0 + rng() * 1.6 }, { x: 4.5 + rng() * 4.5, y: 3.6 + rng() * 2.4 }, 0.85 + rng() * 0.4);
+    const best = Q.bestChoice(shot, from, CFG, { prefer: CFG.userPrefer.attack });
+    if (best.bestType !== 'overhead') continue;
+    const bb = best.best;
+    // Le joueur rejoint le point idéal (réaction, accélération) ; tête calme, regard posé sur le point de frappe
+    const p = { x: from.x, y: from.y, vx: 0, vy: 0 };
+    let look = B.createLook(0, V.basePitch);
+    for (let t = shot.tStart; t <= bb.t + 1e-9; t += DT) {
+      const ball = Q.ballStateAt(shot, t);
+      const ahead = Q.ballStateAt(shot, Math.min(t + V.anticipation, shot.endT));
+      if (t >= shot.tStart + CFG.player.reactionTime) Object.assign(p, PL.stepVelocity(p, PL.arriveVelocity(p, bb.pos, CFG.player, DT), DT, CFG.player));
+      const eye = B.eyePosition(p, look, 0, 0);
+      const focus = { x: bb.ball.x, y: bb.ball.y, z: bb.ball.z, w: B.focusWeight(bb.t - t, V) };
+      look = B.lookStep(look, B.gazeTarget(look, eye, ball, p, Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V), ahead, focus), DT);
+    }
+    checked++;
+    if (G.inView(B.eyePosition(p, look, 0, 0), look.gazeYaw, look.gazePitch, bb.ball, f.h, f.v, 0.05)) visible++;
+  }
+  assert(checked >= 40, 'coups au-dessus de la tête observés : ' + checked);
+  assert(visible === checked, `balle hors champ au contact : ${checked - visible} / ${checked}`);
+});
+
 test('caméra calme : jamais au-delà du profil, sans volte-face, regard posé sur le point de frappe', () => {
   const opts = Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V);
   const eye = { x: 5, y: 3, z: 1.65 };
@@ -297,7 +327,20 @@ test('caméra calme : jamais au-delà du profil, sans volte-face, regard posé s
 test('1re personne : pendant ton geste, la main et la raquette ne passent jamais devant tes yeux', () => {
   const pos = { x: 5, y: 3 };
   const sk = B.createSkeleton();
+  // « Devant les yeux » : à moins de 0,28 m des yeux ET dans le champ de vision (à moins de 60° du regard).
+  // À côté de la tête (préparation d'un smash, main près de l'oreille), hors du champ, c'est le geste normal ;
+  // jamais dans la tête pour autant (0,15 m au moins).
+  let worstInView = Infinity;
   let worst = Infinity;
+  const check = (look, eye, pts) => {
+    const g = B.gazeDir(look);
+    for (const p of pts) {
+      const d = dist(p, eye);
+      worst = Math.min(worst, d);
+      const cos = ((p.x - eye.x) * g.x + (p.y - eye.y) * g.y + (p.z - eye.z) * g.z) / Math.max(d, 1e-9);
+      if (cos > Math.cos((60 * Math.PI) / 180)) worstInView = Math.min(worstInView, d);
+    }
+  };
   for (const hand of [1, -1]) {
     for (const stroke of ['ground', 'lob', 'volley']) {
       for (const side of [1, -1]) {
@@ -308,12 +351,27 @@ test('1re personne : pendant ton geste, la main et la raquette ne passent jamais
             const r = B.racketPose({ pos, bodyYaw: 0, hand, mode: 'swing', stroke, side, height: h, swing: s, aim, crouch: B.crouchFor(h), fp: true });
             B.skeleton({ x: pos.x, y: pos.y, bodyYaw: 0, gazeYaw: 0, gazePitch: -0.3, hand, racket: r, crouch: B.crouchFor(h), twist: B.twistFor('swing', side, 0, s) }, sk);
             const eye = B.eyePosition(pos, look, B.crouchFor(h) * 0.4, 0);
-            const handPt = hand > 0 ? sk.handR : sk.handL;
-            worst = Math.min(worst, dist(handPt, eye), dist(sk.racket.head, eye));
+            check(look, eye, [hand > 0 ? sk.handR : sk.handL, sk.racket.head]);
           }
         }
       }
     }
   }
-  assert(worst >= 0.28, 'main ou raquette à ' + worst.toFixed(2) + ' m des yeux');
+  // Au-dessus de la tête (bandeja, smash) : le regard monte vers la balle, la raquette reste du côté de la main
+  for (const hand of [1, -1]) {
+    for (const side of [1, -1]) {
+      for (const h of [2.0, 2.4, 2.8]) {
+        const aim = B.bodyPoint(pos, 0, 0.35 * side, 0.3, h);
+        const look = B.createLook(0, 0.6);
+        for (let s = 0; s <= 1.0001; s += 0.02) {
+          const r = B.racketPose({ pos, bodyYaw: 0, hand, mode: 'swing', stroke: 'overhead', side, height: h, swing: s, aim, crouch: 0, fp: true });
+          B.skeleton({ x: pos.x, y: pos.y, bodyYaw: 0, gazeYaw: 0, gazePitch: 0.6, hand, racket: r, crouch: 0, twist: B.twistFor('swing', side, 0, s) }, sk);
+          const eye = B.eyePosition(pos, look, 0, 0);
+          check(look, eye, [hand > 0 ? sk.handR : sk.handL, sk.racket.head]);
+        }
+      }
+    }
+  }
+  assert(worstInView >= 0.28, 'main ou raquette devant les yeux, à ' + worstInView.toFixed(2) + ' m');
+  assert(worst >= 0.15, 'main ou raquette dans la tête : ' + worst.toFixed(2) + ' m');
 });

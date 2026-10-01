@@ -368,8 +368,8 @@ const STROKES = {
   overhead: {
     abs: true,
     keys: [
-      { lat: 0.3, fwd: 0.05, z: 2.0, axis: [0.15, -0.1, 0.98] },
-      { lat: 0.32, fwd: -0.35, z: 2.0, axis: [0.15, -0.55, 0.82] },
+      { lat: 0.42, fwd: 0.05, z: 2.0, axis: [0.15, -0.1, 0.98] },
+      { lat: 0.42, fwd: -0.35, z: 2.0, axis: [0.15, -0.55, 0.82] },
       { lat: 0.25, fwd: 0.32, z: 2.45, axis: [0.05, 0.45, 0.9] },
       { lat: -0.2, fwd: 0.45, z: 1.05, axis: [-0.3, 0.6, -0.65] },
     ],
@@ -392,6 +392,8 @@ const FP_FOLLOW = {
   ground: { lat: -0.38, fwd: 0.42, dz: -0.08, axis: [-0.75, 0.55, 0.2] },
   lob: { lat: -0.3, fwd: 0.45, dz: 0.1, axis: [-0.6, 0.5, 0.6] },
   volley: { lat: 0.3, fwd: 0.52, dz: -0.18, axis: [0.4, 0.75, 0.45] },
+  // Au-dessus de la tête : la raquette redescend du côté de la main, sans croiser devant les yeux
+  overhead: { lat: 0.55, fwd: 0.35, z: 0.95, axis: [0.6, 0.45, -0.65] },
 };
 const STROKE_TIMES = [0, 0.25, 0.55, 1];
 /** Part du geste au moment du contact (pour synchroniser l'animation et la frappe). */
@@ -472,8 +474,11 @@ function racketPose(o, out) {
     // Point de contact réel : l'image clé « contact » passe par la balle
     if (o.aim) {
       const local = toBody(o.pos, yaw, o.aim);
+      // En 1re personne, un coup au-dessus de la tête reste du côté de la raquette (le bras ne croise
+      // jamais devant le visage, même si la balle est un peu de l'autre côté)
+      const ohFp = o.fp && o.stroke === 'overhead';
       const fix = (K) => {
-        K.lat = local.lat;
+        K.lat = ohFp ? (hand > 0 ? Math.max(local.lat, 0.3) : Math.min(local.lat, -0.3)) : local.lat;
         K.fwd = local.fwd;
         K.z = local.z;
       };
