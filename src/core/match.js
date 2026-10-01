@@ -204,7 +204,9 @@ function assignReceiver(s) {
     const shot = f.shot;
     if (!shot.best) shot.best = Q.bestChoice(shot, s.players[0], s.cfg, { noVolley: !!f.serve });
     if (!shot.best.best) {
-      // Injouable pour toi (balle au centre partie de l'autre côté) : ton partenaire la prend
+      // Injouable pour toi : au service, c'est un ace (seul le receveur peut renvoyer le service) ;
+      // en jeu (balle au centre partie de l'autre côté), ton partenaire la prend
+      if (f.serve) return;
       id = 1;
     } else {
       s.recv = { player: 0, user: { shot, pending: null, spawnPos: { x: s.players[0].x, y: s.players[0].y }, serve: !!f.serve } };
@@ -421,7 +423,6 @@ function userHit(s, tc, pos, overshoot) {
   }
   if (q.score < cfg.quality.minReturn) {
     // Frappe trop faible : la balle part dans le filet
-    s.recv = { player: 0, user: u };
     userMiss(s, 'weak', { type: result.type, quality: result.quality, contactT: tc, ball: b, placementError: result.placementError });
     const net = errorFlight(s, contact, 0, 'drive', () => 0.2);
     if (net) {
@@ -581,7 +582,6 @@ function doServe(s) {
   const sv = s.serve;
   const cfg = s.cfg;
   const team = ROSTER[sv.by].team;
-  const rTeam = 1 - team;
   const box = serviceBox(sv.side);
   const rng = rngFor(s, 6 + (sv.second ? 1 : 0));
   const seed = SG.mixSeed(s.seed, 7000 + s.index * 5 + (sv.second ? 1 : 0));

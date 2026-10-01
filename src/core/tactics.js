@@ -13,7 +13,6 @@
  * Repère d'équipe : celui de flight.js (sa vitre de fond en y = 0, le filet en y = 10). Pour l'équipe du
  * haut, c'est le symétrique du court : « droite » y est la droite des joueurs qui regardent le filet.
  */
-import P from './physics.js';
 import Q from './quality.js';
 import PL from './players.js';
 import DEFAULT_CONFIG from './config.js';

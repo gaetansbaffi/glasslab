@@ -1,7 +1,7 @@
 /*
  * Glass Lab — tests : partie en double à 4 joueurs (match.js).
  */
-import { test, assert, near, section } from './harness.js';
+import { test, assert, section } from './harness.js';
 import M from '../src/core/match.js';
 import F from '../src/core/flight.js';
 import Q from '../src/core/quality.js';
@@ -68,7 +68,6 @@ test('même graine → même partie (déterminisme), graine différente → part
 test('partie orientée entraînement : ≈ 65 % des balles adverses vers toi, de ton côté du court', () => {
   let toUser = 0;
   let toPartner = 0;
-  let central = 0;
   for (const seed of [1, 2, 3, 4]) {
     play(seed, 150, perfect, (prev, st) => {
       for (const e of st.events) {
@@ -80,7 +79,6 @@ test('partie orientée entraînement : ≈ 65 % des balles adverses vers toi, de
           const d = Q.ballStateAt(st.recv.user.shot, 0);
           const first = st.recv.user.shot.sim.contacts[0];
           assert(first.pos.x >= 5 - CFG.tactics.centerBand - 1e-9 || e.central, `balle attribuée hors de ton côté : x = ${first.pos.x.toFixed(2)}`);
-          if (e.central) central++;
           assert(d && SG.FAMILY_IDS.includes(e.family), 'famille inconnue : ' + e.family);
         }
       }
@@ -306,17 +304,13 @@ test('ton service : il attend Frappe ; la balle est lâchée, rebondit, puis par
 
 test('fautes de service : deuxième service, double faute = point au receveur ; volée au retour = faute', () => {
   let faults = 0;
-  let doubles = 0;
   let seconds = 0;
   for (const seed of [91, 92, 93, 94]) {
     const { events } = play(seed, 200, human);
     for (const e of events) {
       if (e.type === 'fault') faults++;
       if (e.type === 'serveSetup' && e.second) seconds++;
-      if (e.type === 'point' && e.reason === 'doubleFault') {
-        doubles++;
-        assert(e.winner !== M.ROSTER[e.by].team, 'double faute : point au receveur');
-      }
+      if (e.type === 'point' && e.reason === 'doubleFault') assert(e.winner !== M.ROSTER[e.by].team, 'double faute : point au receveur');
     }
   }
   assert(faults >= 2 && seconds >= faults - 1, `fautes ${faults}, deuxièmes services ${seconds}`);
