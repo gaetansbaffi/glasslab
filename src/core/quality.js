@@ -7,7 +7,6 @@
  */
 
 import P from './physics.js';
-import G from './geometry.js';
 import PL from './players.js';
 import DEFAULT_CONFIG from './config.js';
 
@@ -32,11 +31,10 @@ function trapezoid(v, z0, a, b, z1) {
 /**
  * État de la balle à l'instant t, enrichi de l'historique des contacts :
  * { t, x, y, z, vx, vy, vz, floorBounces, wallHits, tSinceBounce }.
- * t < 0 : vol côté adverse, avant le filet (trajectoire remontée analytiquement).
+ * t < 0 : vol côté adverse, avant le filet (depuis la frappe, instant tStart).
  */
 function ballStateAt(shot, t) {
-  const g = shot.sim.params.g;
-  const s = t < 0 ? G.ballistic(shot.init, t, g) : P.stateAt(shot.sim, t);
+  const s = P.stateAt(shot.sim, t);
   let floorBounces = 0;
   let wallHits = 0;
   let lastFloorT = null;

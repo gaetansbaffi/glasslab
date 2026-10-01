@@ -12,12 +12,9 @@ import { updateActor, placeActor } from './actors.js';
 
 const REPLAY_SPEED = 0.4;
 
+/** Trajectoire de la frappe adverse jusqu'à la fin de la balle (avant le filet : instants négatifs). */
 function shotSamples(shot) {
-  const out = [];
-  const g = shot.sim.params.g;
-  for (let t = shot.tStart; t < 0; t += 1 / 60) out.push(Object.assign({ t }, G.ballistic(shot.init, t, g)));
-  for (const s of P.sample(shot.sim, 1 / 90)) out.push(s);
-  return out;
+  return P.sample(shot.sim, 1 / 90, shot.tStart);
 }
 
 export function createReplay({ renderer, user }) {

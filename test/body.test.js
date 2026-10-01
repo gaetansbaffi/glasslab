@@ -6,9 +6,9 @@ import B from '../src/core/body.js';
 import G from '../src/core/geometry.js';
 import P from '../src/core/physics.js';
 import CFG from '../src/core/config.js';
-import R from '../src/core/rally.js';
+import M from '../src/core/match.js';
 import Q from '../src/core/quality.js';
-import { botInput, makeShot } from './helpers.js';
+import { makeShot } from './helpers.js';
 import PL from '../src/core/players.js';
 
 section('Corps : tête, regard, bras et raquette');
@@ -244,27 +244,42 @@ test('squelette : proportions humaines, pieds au sol, genoux vers l’avant, fou
 });
 
 test('la balle reste visible au moment de frapper (regard qui suit la balle, champ du jeu)', () => {
-  // Joueur parfait sur de vraies balles : la tête (calme) suit la balle avec gazeTarget + lookStep et se pose
-  // sur le point de frappe juste avant de frapper (focusWeight), comme dans le jeu
+  // Joueur parfait en partie : la tête (calme) suit la balle avec gazeTarget + lookStep et se pose sur le
+  // point de frappe juste avant de frapper (focusWeight), comme dans le jeu
   const f = fovs(2.17);
+  const perfect = (st) => {
+    if (st.phase === 'serve' && st.serve.by === 0) return { strike: st.serve.hitAt == null };
+    const u = M.userShot(st);
+    if (!u || u.pending) return {};
+    const best = u.shot.best.best;
+    const v = PL.arriveVelocity(st.players[0], best.pos, CFG.player, DT);
+    return { move: { x: v.x / CFG.player.speed, y: v.y / CFG.player.speed }, strike: u.t + DT >= best.t && u.t < best.t + DT };
+  };
   let checked = 0;
   let visible = 0;
-  for (let seed = 1; seed <= 120; seed++) {
-    let st = R.createRally({ seed: 9000 + seed * 13 });
+  for (const seed of [11, 12, 13, 14]) {
+    let st = M.createMatch({ seed, level: 3 });
     let look = B.createLook(0, V.basePitch);
-    const shot = st.shot;
-    const best = shot.best.best;
-    for (let i = 0; i < 800 && st.phase === 'incoming'; i++) {
-      const ball = R.ballPosition(st);
-      const ahead = Q.ballStateAt(shot, Math.min(st.t + V.anticipation, shot.endT));
-      const eye = B.eyePosition(st.player, look, 0, 0);
-      const focus = { x: best.ball.x, y: best.ball.y, z: best.ball.z, w: B.focusWeight(best.t - st.t, V) };
-      look = B.lookStep(look, B.gazeTarget(look, eye, ball, st.player, Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V), ahead, focus), DT);
-      if (st.t <= best.t && st.t + DT > best.t) {
-        checked++;
-        if (G.inView(B.eyePosition(st.player, look, 0, 0), look.gazeYaw, look.gazePitch, ball, f.h, f.v, 0.05)) visible++;
+    for (let i = 0; i < 160 / DT && checked < 120; i++) {
+      const u = M.userShot(st);
+      const ball = M.ballPosition(st);
+      const p = st.players[0];
+      let ahead = null;
+      let focus = null;
+      if (u) {
+        const bb = u.shot.best.best;
+        ahead = Q.ballStateAt(u.shot, Math.min(u.t + V.anticipation, u.shot.endT));
+        focus = { x: bb.ball.x, y: bb.ball.y, z: bb.ball.z, w: B.focusWeight(bb.t - u.t, V) };
       }
-      st = R.step(st, DT, botInput(st, DT));
+      if (ball) look = B.lookStep(look, B.gazeTarget(look, B.eyePosition(p, look, 0, 0), ball, p, Object.assign({ idle: { x: 5, y: 12, z: 1 } }, V), ahead, focus), DT);
+      if (u && !u.pending) {
+        const bb = u.shot.best.best;
+        if (u.t + DT >= bb.t && u.t < bb.t + DT) {
+          checked++;
+          if (G.inView(B.eyePosition(p, look, 0, 0), look.gazeYaw, look.gazePitch, Q.ballStateAt(u.shot, bb.t), f.h, f.v, 0.05)) visible++;
+        }
+      }
+      st = M.step(st, DT, perfect(st));
     }
   }
   assert(checked >= 100, 'contacts observés : ' + checked);

@@ -5,7 +5,8 @@ import { test, assert, near, section } from './harness.js';
 import P from '../src/core/physics.js';
 import G from '../src/core/geometry.js';
 import SG from '../src/core/shotgen.js';
-import { SEEDS, START } from './helpers.js';
+import Q from '../src/core/quality.js';
+import { SEEDS } from './helpers.js';
 
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -60,23 +61,26 @@ test('angles de regard : aller-retour et lissage par le plus court chemin', () =
   near(G.wrapAngle(0.5 - 4 * Math.PI), 0.5, 1e-12);
 });
 
-test('balle côté adverse : la remontée dans le temps reste sur la trajectoire et au-dessus du sol', () => {
-  for (const f of SG.FAMILY_IDS) {
-    for (const seed of SEEDS.slice(0, 15)) {
-      const sc = SG.generateShot({ family: f, level: 3, seed, player: START });
-      const g = P.DEFAULT_PARAMS.g;
-      const tau = G.preNetDuration(sc.init, g);
-      assert(tau > 0, 'durée positive');
-      const start = G.ballistic(sc.init, -tau, g);
-      assert(start.y > 10 && start.y <= 16.5 + 1e-9, 'départ côté adverse : y=' + start.y);
-      assert(start.z >= 0.4 - 1e-9 && start.z <= 3.2 + 1e-9, 'hauteur de frappe plausible : z=' + start.z);
-      // Revenir au filet redonne exactement l'état initial
-      const back = G.ballistic(start, tau, g);
-      near(back.x, sc.init.x, 1e-9);
-      near(back.z, sc.init.z, 1e-9);
-      near(back.vz, sc.init.vz, 1e-9);
+test('balle côté adverse : avant le filet, elle part de la raquette adverse et reste au-dessus du sol', () => {
+  const r = P.DEFAULT_PARAMS.radius;
+  let checked = 0;
+  for (const family of SG.FAMILY_IDS) {
+    for (const seed of SEEDS.slice(0, 8)) {
+      const origin = { x: 2 + (seed % 6), y: 17.5, z: 1.0 };
+      const f = SG.generateTo({ origin, team: 1, style: 'drive', family, level: 3, seed, attempts: 300 });
+      if (!f) continue;
+      const shot = f.shot; // repère du receveur (équipe du bas) = repère du court
+      const hit = Q.ballStateAt(shot, shot.tStart);
+      near(Math.hypot(hit.x - origin.x, hit.y - origin.y, hit.z - origin.z), 0, 1e-9, 'départ à la raquette');
+      for (let t = shot.tStart; t < 0; t += 0.02) {
+        const b = Q.ballStateAt(shot, t);
+        assert(b.z >= r - 1e-9 && b.y > 10 - 1e-9 && b.y < 20, `côté adverse, au-dessus du sol : y=${b.y.toFixed(2)} z=${b.z.toFixed(2)}`);
+      }
+      near(Q.ballStateAt(shot, 0).y, 10, 1e-6, 'au filet à t = 0');
+      checked++;
     }
   }
+  assert(checked >= 25, 'balles vérifiées : ' + checked);
 });
 
 test('joystick : zone morte, normalisation, courbe de réponse, sensibilité', () => {

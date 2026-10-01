@@ -5,7 +5,7 @@
  */
 import { results, section } from './harness.js';
 
-const FILES = ['purity', 'physics', 'spin', 'geometry', 'players', 'body', 'quality', 'shotgen', 'rally', 'tactics', 'score', 'match', 'stats'];
+const FILES = ['purity', 'physics', 'spin', 'geometry', 'players', 'body', 'quality', 'shotgen', 'tactics', 'score', 'match', 'stats'];
 
 for (const f of FILES) {
   try {

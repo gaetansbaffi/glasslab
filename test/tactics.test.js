@@ -86,8 +86,9 @@ test('interception des IA : point atteignable (réaction + accélération), jama
     assert(it.ball.y <= 10 + 1e-9, 'balle passée');
   }
   assert(n >= 20, 'interceptions : ' + n);
-  // Balle impossible à rattraper (IA très lente, à l'opposé) : null, mais elle court quand même vers la balle
-  const far = ballTo(9.4, 8.6, 4);
+  // Balle impossible à rattraper (IA très lente, à l'opposé) : null, mais elle court quand même vers la balle.
+  // Balle qui finit dans le coin, après la latérale puis le fond : une vraie IA la rattrape à la sortie de vitre
+  const far = ballTo(9.4, 3.5, 4);
   const slow = Object.assign({}, CFG, { ai: Object.assign({}, CFG.ai, { speed: 0.3 }) });
   assert(T.aiIntercept(far, { x: 0.6, y: 0.6 }, 'defense', slow) === null, 'hors d’atteinte');
   assert(T.aiIntercept(far, { x: 0.6, y: 0.6 }, 'defense') !== null, 'une vraie IA la rattrape (sortie de vitre)');

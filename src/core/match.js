@@ -29,7 +29,6 @@ import SG from './shotgen.js';
 import PL from './players.js';
 import F from './flight.js';
 import T from './tactics.js';
-import R from './rally.js';
 import SC from './score.js';
 import DEFAULT_CONFIG from './config.js';
 
@@ -41,14 +40,23 @@ const ROSTER = [
   { team: 1, side: -1, ai: true, name: 'Adversaire gauche' },
 ];
 
-const MISS_REASONS = Object.assign({}, R.MISS_REASONS, { serveVolley: 'Volée au retour de service' });
+const MISS_REASONS = {
+  early: 'Trop tôt',
+  late: 'Trop tard',
+  far: 'Trop loin',
+  notReached: 'Pas atteinte',
+  weak: 'Frappe trop faible (filet)',
+  serveVolley: 'Volée au retour de service',
+};
 const POINT_PAUSE = 1.6; // s de jeu entre la fin d'un point et la mise en place du suivant
 const SERVE_WAIT = 1.0; // un serveur IA attend ≈ 1 s après la mise en place (le temps de voir)
 const FAULT_PAUSE = 0.9; // après une faute de service ou un let
 const TOSS_Z = 1.05; // la balle est lâchée à cette hauteur, rebondit, puis est frappée au sommet du rebond
 const TOSS_FALL = Math.sqrt((2 * (TOSS_Z - P.DEFAULT_PARAMS.radius)) / P.DEFAULT_PARAMS.g);
-const SERVE_DROP = TOSS_FALL * (1 + P.DEFAULT_PARAMS.eFloor); // du lâcher à la frappe (≈ 0,8 s)
-const SERVE_Z = P.DEFAULT_PARAMS.radius + P.DEFAULT_PARAMS.eFloor * P.DEFAULT_PARAMS.eFloor * (TOSS_Z - P.DEFAULT_PARAMS.radius);
+// Rebond du lâcher (≈ 4,4 m/s à l'impact) : restitution du gazon à cette vitesse (petite chute : air négligé)
+const TOSS_E = P.restitution('floor', P.DEFAULT_PARAMS.g * TOSS_FALL);
+const SERVE_DROP = TOSS_FALL * (1 + TOSS_E); // du lâcher à la frappe (≈ 0,8 s)
+const SERVE_Z = P.DEFAULT_PARAMS.radius + TOSS_E * TOSS_E * (TOSS_Z - P.DEFAULT_PARAMS.radius);
 
 /* ---------- Repères ---------- */
 
@@ -733,7 +741,7 @@ function tossBall(s) {
   const g = P.DEFAULT_PARAMS.g;
   if (t < TOSS_FALL) return { x: c.x, y: c.y, z: TOSS_Z - 0.5 * g * t * t };
   const tb = t - TOSS_FALL;
-  const v = P.DEFAULT_PARAMS.eFloor * g * TOSS_FALL;
+  const v = TOSS_E * g * TOSS_FALL;
   return { x: c.x, y: c.y, z: Math.max(P.DEFAULT_PARAMS.radius, P.DEFAULT_PARAMS.radius + v * tb - 0.5 * g * tb * tb) };
 }
 

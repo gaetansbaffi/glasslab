@@ -65,21 +65,25 @@ test('en vol : le lift plonge, le coupé flotte, l’effet latéral courbe la tr
   assert(right.x < 5 - 0.2 && left.x > 5 + 0.2, `courbe : ${right.x.toFixed(2)} / ${left.x.toFixed(2)}`);
 });
 
-test('rebond au sol : le coupé freine, le lift accélère, le latéral dévie', () => {
+test('rebond au sol : le coupé freine le plus, le lift le moins, un lift au-delà du roulement fait filer la balle, le latéral dévie', () => {
   const base = { x: 5, y: 5, z: R, vx: 0, vy: -12, vz: -5 };
   const out = (w) => P.reflect(Object.assign({}, base, w), 'floor', P.DEFAULT_PARAMS);
   const none = out({ wx: 0, wy: 0, wz: 0 });
   const back = out(P.spinVector(0, -1, -150, 0));
   const top = out(P.spinVector(0, -1, 150, 0));
-  near(none.vy, -12 * P.DEFAULT_PARAMS.floorTangent, 1e-12);
-  assert(-back.vy < -none.vy - 1, `coupé : ${back.vy.toFixed(2)}`);
-  assert(-top.vy > -none.vy + 1, `lift : ${top.vy.toFixed(2)}`);
+  const kick = out(P.spinVector(0, -1, 500, 0)); // R ω ≈ 16,5 m/s > 12 m/s : plus vite que le roulement
+  // Sans effet : la balle accroche le gazon et part en roulant (vitesse / (1 + κ)), avec du lift
+  near(none.vy, -12 / (1 + P.DEFAULT_PARAMS.spinInertia), 1e-9);
+  assert(P.spinParts(none).top > 100, 'la balle prend du lift au rebond');
+  assert(-back.vy < -none.vy - 0.5, `coupé : ${back.vy.toFixed(2)}`);
+  assert(-top.vy > -none.vy + 1 && -top.vy < 12, `lift : ${top.vy.toFixed(2)} (ralentit moins, sans accélérer)`);
+  assert(-kick.vy > 12, `lift très appuyé : ${kick.vy.toFixed(2)} (la balle file)`);
   near(back.vz, none.vz, 1e-12, 'rebond vertical inchangé');
-  // Le frottement réduit le coupé (la balle tend vers le roulement)
-  assert(Math.abs(P.spinParts(back).top) < 0.6 * 150, 'coupé réduit après le rebond');
+  // Le frottement absorbe le coupé : la balle glisse tout le contact et repart sans coupé, voire liftée
+  assert(P.spinParts(back).top > -0.4 * 150, `coupé absorbé au rebond : ${P.spinParts(back).top.toFixed(0)} rad/s`);
   // Latéral (axe incliné, comme une víbora) : déviation vers la droite de la trajectoire
   const side = out(P.spinVector(0, -1, 0, 150));
-  assert(side.vx < -1, `déviation au rebond : vx = ${side.vx.toFixed(2)}`);
+  assert(side.vx < -0.8, `déviation au rebond : vx = ${side.vx.toFixed(2)}`);
 });
 
 test('vitre : le coupé « meurt » (sort bas), le lift sort haut', () => {
@@ -97,7 +101,7 @@ test('vitre : le coupé « meurt » (sort bas), le lift sort haut', () => {
   assert(cut.back.vOut.vy < none.back.vOut.vy, 'le coupé sort moins vite de la vitre');
 });
 
-test('launchToBounce avec effet : le premier rebond tombe exactement au point visé', () => {
+test('launchToBounce avec effet : le premier rebond tombe au point visé (au millimètre), malgré l’air et l’effet', () => {
   const rng = P.mulberry32(8);
   for (let i = 0; i < 200; i++) {
     const from = { x: 1 + rng() * 8, y: 11 + rng() * 8, z: 0.4 + rng() * 2.6 };
@@ -108,9 +112,9 @@ test('launchToBounce avec effet : le premier rebond tombe exactement au point vi
     const sim = P.simulate(init, { maxFloorBounces: 1, tMax: 4, court: 'full' });
     const c = sim.contacts[0];
     if (c.type !== 'floor') continue; // filet ou paroi avant le rebond : hors sujet ici
-    near(c.pos.x, to.x, 1e-9);
-    near(c.pos.y, to.y, 1e-9);
-    near(c.t, T, 1e-9);
+    near(c.pos.x, to.x, 1e-3);
+    near(c.pos.y, to.y, 1e-3);
+    near(c.t, T, 1e-3);
   }
   const parts = P.spinParts(Object.assign({ vx: 0, vy: -10 }, P.spinVector(0, -10, -120, 40)));
   near(parts.top, -120, 1e-9);

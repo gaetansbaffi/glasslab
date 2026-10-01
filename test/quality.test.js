@@ -5,9 +5,10 @@ import { test, assert, near, section } from './harness.js';
 import P from '../src/core/physics.js';
 import CFG from '../src/core/config.js';
 import Q from '../src/core/quality.js';
-import R from '../src/core/rally.js';
+import M from '../src/core/match.js';
+import PL from '../src/core/players.js';
 import SG from '../src/core/shotgen.js';
-import { makeShot, botInput } from './helpers.js';
+import { makeShot } from './helpers.js';
 
 section('Classification, qualité et meilleur choix');
 
@@ -86,8 +87,8 @@ test('meilleur choix : balle courte loin du joueur → avant vitre (volée et de
   assert(r.best.margin >= 0, 'atteignable à temps');
 });
 
-test('meilleur choix : balle qui file mourir dans le coin (double vitre) → la volée est le meilleur choix', () => {
-  const shot = makeShot({ x: 7.5, y: 10, z: 1.2 }, { x: 9.3, y: 0.2 }, 0.8);
+test('meilleur choix : balle coupée qui file mourir dans le coin (double vitre) → la volée est le meilleur choix', () => {
+  const shot = makeShot({ x: 7.5, y: 10, z: 1.2 }, { x: 9.4, y: 0.3 }, 0.7, -180);
   assert(P.contactSequence(shot.sim).join(',') === 'floor,back,right,floor', 'fond puis latérale');
   const r = Q.bestChoice(shot, { x: 8.5, y: 3 });
   assert(r.bestType === 'volley', 'attendu volée, obtenu ' + r.bestType);
@@ -95,13 +96,31 @@ test('meilleur choix : balle qui file mourir dans le coin (double vitre) → la 
   assert(r.best.quality - Math.max(...others) > 0.1, 'avance nette de la volée');
 });
 
+/** Première balle que tu joues en partie (joueur parfait) : { shot, result }. */
+function firstUserHit(seed) {
+  const DT = 1 / 120;
+  let st = M.createMatch({ seed, level: 3 });
+  for (let i = 0; i < 60 / DT; i++) {
+    const u = M.userShot(st);
+    let input = {};
+    if (st.phase === 'serve' && st.serve.by === 0) input = { strike: st.serve.hitAt == null };
+    else if (u && !u.pending) {
+      const best = u.shot.best.best;
+      const v = PL.arriveVelocity(st.players[0], best.pos, CFG.player, DT);
+      input = { move: { x: v.x / CFG.player.speed, y: v.y / CFG.player.speed }, strike: u.t + DT >= best.t && u.t < best.t + DT };
+    }
+    st = M.step(st, DT, input);
+    const e = st.events.find((k) => k.type === 'userHit');
+    if (e) return { shot: e.shot, result: e.result };
+  }
+  return null;
+}
+
 test('feedback et règle à retenir générés à partir des données', () => {
-  let st = R.createRally({ seed: 2024 });
-  const shot = st.shot;
-  for (let i = 0; i < 600 && st.phase === 'incoming'; i++) st = R.step(st, 1 / 60, botInput(st, 1 / 60));
-  const fb = Q.feedback(st.last, SG.FAMILIES[shot.family].name);
-  assert(['good', 'ok', 'bad'].includes(fb.level) && /Volée|Demi-volée|Avant vitre|Après vitre/.test(fb.text), fb.text);
-  const ex = Q.explainBall(shot, st.last);
+  const { shot, result } = firstUserHit(2024);
+  const fb = Q.feedback(result, SG.FAMILIES[shot.family].name);
+  assert(['good', 'ok', 'bad'].includes(fb.level) && /Volée|Demi-volée|Avant vitre|Après vitre|Bandeja/.test(fb.text), fb.text);
+  const ex = Q.explainBall(shot, result);
   assert(ex.lines.length >= 3 && ex.rule.length > 40);
   assert(/km\/h/.test(ex.lines.join(' ')), 'vitesses chiffrées');
   // Cas de l'énoncé : après vitre médiocre alors que la demi-volée était meilleure, balle dans le coin
@@ -120,9 +139,9 @@ test('contexte du double : alignement avec le partenaire, côté couvert, consei
   assert(ok.aligned && ok.ownSide && Q.doublesAdvice(ok) === '');
   assert(/ton partenaire couvre/.test(Q.doublesAdvice(Q.doublesContext({ x: 2, y: 2.4 }, { x: 3, y: 2.4 }, 'defense'))));
   // Le Détail en parle
-  const st = R.createRally({ seed: 2024 });
-  const r = { outcome: 'miss', reason: 'late', reasonLabel: 'Trop tard', bestType: st.shot.best.bestType, bestQuality: st.shot.best.best.quality, doubles: d };
-  assert(Q.explainBall(st.shot, r).lines.some((l) => /Double : ton équipe était au filet/.test(l)));
+  const { shot } = firstUserHit(2024);
+  const r = { outcome: 'miss', reason: 'late', reasonLabel: 'Trop tard', bestType: shot.best.bestType, bestQuality: shot.best.best.quality, doubles: d };
+  assert(Q.explainBall(shot, r).lines.some((l) => /Double : ton équipe était au filet/.test(l)));
 });
 
 test('au-dessus de la tête : lob court au-dessus d’un joueur au filet → bandeja / smash, meilleur choix au filet', () => {

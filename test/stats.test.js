@@ -5,7 +5,8 @@ import { test, assert, near, section } from './harness.js';
 import CFG from '../src/core/config.js';
 import Stats from '../src/core/stats.js';
 import SC from '../src/core/score.js';
-import R from '../src/core/rally.js';
+import M from '../src/core/match.js';
+import PL from '../src/core/players.js';
 
 const DEFAULTS = { speed: 1, auto: false, showPath: false, showBest: true, sound: true, lefty: false };
 
@@ -59,9 +60,26 @@ test('répétition espacée et difficulté adaptative (80 % / 50 %)', () => {
     changed += r.levelChange;
   }
   assert(st.level === 2 && changed === 1, 'niveau ' + st.level);
-  // Les poids et le niveau sont bien utilisés par l'échange
-  const rally = R.createRally({ seed: 5, weights: { direct: 0, A: 0, B: 0, C: 1, D: 0 }, level: 4 });
-  assert(rally.shot.family === 'C' && rally.shot.level === 4);
+  // Les poids et le niveau sont bien utilisés par la partie : balles des adversaires vers toi
+  const DT = 1 / 120;
+  let m = M.createMatch({ seed: 5, weights: { direct: 0, A: 0, B: 0, C: 1, D: 0 }, level: 4 });
+  const mine = [];
+  for (let i = 0; i < 240 / DT && mine.length < 12; i++) {
+    const u = M.userShot(m);
+    let input = {};
+    if (m.phase === 'serve' && m.serve.by === 0) input = { strike: m.serve.hitAt == null };
+    else if (u && !u.pending) {
+      const best = u.shot.best.best;
+      const v = PL.arriveVelocity(m.players[0], best.pos, CFG.player, DT);
+      input = { move: { x: v.x / CFG.player.speed, y: v.y / CFG.player.speed }, strike: u.t + DT >= best.t && u.t < best.t + DT };
+    }
+    const prev = m.flight;
+    m = M.step(m, DT, input);
+    if (m.flight && m.flight !== prev && m.flight.team === 1 && !m.flight.serve && m.recv && m.recv.player === 0) mine.push(m.flight);
+  }
+  assert(mine.length >= 8 && mine.every((f) => f.level === 4), 'niveau 4 : ' + mine.map((f) => f.level).join(','));
+  const c = mine.filter((f) => f.shot.family === 'C').length;
+  assert(c >= mine.length * 0.5, `famille C demandée : ${c} / ${mine.length}`);
 });
 
 test('migration : version 1 (application multi-modes) → version 2, données inutiles abandonnées', () => {

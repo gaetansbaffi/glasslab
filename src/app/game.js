@@ -4,7 +4,8 @@
  * annonces de l'arbitre, feedback, statistiques (tes coups seulement) et Détail.
  *
  * Le match en cours est sauvegardé à chaque point (reprise depuis l'accueil) ; à sa fin, écran de fin
- * de match. Vitesse du jeu fixée par la difficulté adaptative (config.game.levelSpeed) : aucun réglage.
+ * de match. Le jeu tourne en temps réel à tous les niveaux (un ralenti fausserait la gravité : les balles
+ * flotteraient) ; la difficulté adaptative règle la vitesse des balles, pas celle du temps.
  */
 import CFG from '../core/config.js';
 import G from '../core/geometry.js';
@@ -80,8 +81,6 @@ export function createGame(ctx) {
   actors.forEach((a, i) => figures.setPlayer(i, { team: a.team, fp: i === 0, skin: i }));
   const replay = createReplay({ renderer, user });
 
-  const level = () => (game.cur ? game.cur.level : store.save.level);
-  const speed = () => CFG.game.levelSpeed[Math.max(0, Math.min(4, level() - 1))];
 
   /* ---------- Partie ---------- */
 
@@ -294,7 +293,7 @@ export function createGame(ctx) {
   }
 
   function stepGame(dtReal) {
-    game.acc += dtReal * speed();
+    game.acc += dtReal;
     let n = 0;
     const pressed = game.strike;
     const events = [];
@@ -425,7 +424,7 @@ export function createGame(ctx) {
 
   /** Image de jeu (ou de l'accueil) : positions interpolées, animation, caméra aux yeux. */
   function gameView(dt, aspect) {
-    const dtg = dt * speed();
+    const dtg = dt;
     const s = game.cur;
     setReducedMotion(user, device.reducedMotion);
     if (!s) {
@@ -530,7 +529,7 @@ export function createGame(ctx) {
       replay.frame(dt, aspect);
       if (!replay.active) gameView(dt, aspect);
     } else gameView(dt, aspect);
-    renderer.ball.update(replay.active ? replay.view : view, game.screen === 'playing' || replay.active ? dt * (replay.active ? replay.speed : speed()) : 0);
+    renderer.ball.update(replay.active ? replay.view : view, game.screen === 'playing' || replay.active ? dt * (replay.active ? replay.speed : 1) : 0);
     actors.forEach((a, i) => figures.update(i, a.skeleton, a.look, a.eye));
   }
 

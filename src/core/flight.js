@@ -10,7 +10,6 @@
  *     tStart < 0 = instant de la frappe. Pour l'équipe du haut, le repère est le symétrique du court.
  */
 import P from './physics.js';
-import G from './geometry.js';
 
 const SIM_OPTS = { court: 'full', maxFloorBounces: 2, tMax: 8 };
 
@@ -69,15 +68,32 @@ function familyOf(sim) {
   return P.classify(sim);
 }
 
+/** Contact du vol complet vu depuis le repère d'une équipe (vitre de fond de l'équipe du haut = « back »). */
+const MIRROR_TYPE = { back: 'backFar', backFar: 'back', left: 'right', right: 'left', floor: 'floor' };
+function contactInFrame(team, c, t0) {
+  const v = (u) => (team === 0 ? { vx: u.vx, vy: u.vy, vz: u.vz } : { vx: -u.vx, vy: -u.vy, vz: u.vz });
+  return { type: team === 0 ? c.type : MIRROR_TYPE[c.type], t: c.t - t0, pos: toTeamFrame(team, c.pos), vIn: v(c.vIn), vOut: v(c.vOut) };
+}
+
 /**
- * Balle vue par le receveur (format de quality.js), à partir du passage du filet.
+ * Balle vue par le receveur (format de quality.js) : le vol complet lui-même, dans le repère du receveur,
+ * avec t = 0 au passage du filet (le vol avant le filet a des instants négatifs, depuis la frappe) ; ses
+ * contacts sont ceux de son camp, jusqu'au 2e rebond ou jusqu'à ce que la balle repasse le filet.
  * Retourne null si la balle ne passe pas le filet.
  */
 function receiverShot(sim, team, crossT) {
   const recv = 1 - team;
-  const at = toTeamFrame(recv, P.stateAt(sim, crossT + 1e-9));
+  const back = sim.crossings.find((x) => x.t > crossT + 1e-9 && (recv === 1 ? x.dir < 0 : x.dir > 0));
+  const end = back && back.t < sim.endT ? back.t : sim.endT;
+  const half = {
+    segments: sim.segments.filter((seg) => seg.t0 <= end).map((seg) => ({ t0: seg.t0 - crossT, s: toTeamFrame(recv, seg.s) })),
+    contacts: sim.contacts.filter((c) => c.t > crossT + 1e-9 && c.t <= end && c.type !== 'cord' && c.type !== 'net').map((c) => contactInFrame(recv, c, crossT)),
+    endT: end - crossT,
+    endReason: end < sim.endT ? 'net' : sim.endReason,
+    params: sim.params,
+  };
+  const at = P.stateAt(half, 0);
   at.y = Math.min(at.y, P.COURT.depth); // au plan du filet
-  const half = P.simulate(at, { maxFloorBounces: 2, tMax: Math.max(0.5, 8 - crossT) });
   return { init: at, sim: half, tStart: -crossT, endT: half.endT, family: familyOf(half), team: recv };
 }
 
@@ -118,11 +134,7 @@ function launchKmh(flight) {
 /** Hauteur maximale atteinte avant le premier rebond (m). */
 function apex(flight) {
   const first = flight.sim.contacts.find((c) => c.type === 'floor');
-  const t1 = first ? first.t : flight.sim.endT;
-  const s = flight.init;
-  if (s.vz <= 0) return s.z;
-  const tTop = Math.min(t1, s.vz / (flight.sim.params.g - (s.az || 0)));
-  return G.ballistic(s, tTop, flight.sim.params.g).z;
+  return P.maxHeight(flight.sim, 0, first ? first.t : flight.sim.endT);
 }
 
 /**
@@ -137,12 +149,8 @@ function landing(flight) {
   const c = sim.contacts.find((k) => k.t > flight.cross && k.type !== 'cord');
   if (!c) return null;
   if (c.type === 'floor') return c.side === flight.recv ? { x: c.pos.x, y: c.pos.y, t: c.t, out: false } : null;
-  const s = P.stateAt(sim, Math.max(flight.cross, c.t - 1e-6));
-  const g = sim.params.g;
-  const ge = g - (s.az || 0);
-  const h = s.z - sim.params.radius;
-  const p = G.ballistic(s, (s.vz + Math.sqrt(Math.max(0, s.vz * s.vz + 2 * ge * h))) / ge, g);
-  return { x: p.x, y: p.y, t: c.t, out: true };
+  const fall = P.flyFree(P.stateAt(sim, Math.max(flight.cross, c.t - 1e-6)), sim.params);
+  return fall ? { x: fall.s.x, y: fall.s.y, t: c.t, out: true } : null;
 }
 
 const Flight = {

@@ -1,7 +1,7 @@
 /*
  * Glass Lab — constantes ajustables du mode « Match infini ».
  * Toutes les valeurs sont en unités SI (mètres, secondes, m/s) sauf mention contraire.
- * Aucune logique ici : rally.js, shotgen.js et quality.js lisent ces valeurs.
+ * Aucune logique ici : match.js, shotgen.js, tactics.js et quality.js lisent ces valeurs.
  */
 
 const CONFIG = {
@@ -108,30 +108,16 @@ const CONFIG = {
     cornerPenalty: 0.6, // facteur si la balle est à moins de `full` de deux parois
   },
 
-  returnShot: {
-    shortY: 12.5, // retombée d'un renvoi de qualité minimale (m, camp adverse : 10 → 20)
-    deepY: 18.5, // retombée d'un renvoi parfait
-    netMargin: 0.25, // marge au-dessus du filet (0,88 m)
-    xSpread: 3.5, // dispersion latérale de la retombée autour du centre (± m)
-    flightTime: [1.4, 0.9], // durée de vol : qualité faible → lente, haute qualité → rapide (s)
-  },
-
   shotgen: {
     maxAttempts: 300, // tirages max par balle (échantillonnage par rejet)
     levels: 5,
-    // Famille « directe » : rebond puis 2e rebond avant toute vitre (balle courte)
-    direct: { yb: [4.5, 8.5], angle: [-12, 12], T: [[1.15, 1.5], [0.75, 1.0]], z0: [0.9, 1.6] },
-    /*
-     * Familles à vitres (balle qui arrive vers la paroi droite ; la gauche s'obtient par symétrie).
-     * Pour chaque plage [niveau 1, niveau 5] : xb / yb = point de rebond (m), angle = angle de la
-     * trajectoire par rapport à l'axe du court (°), z0 = hauteur au filet (m), T = durée filet → rebond (s).
-     */
-    glassT: [[0.95, 1.25], [0.6, 0.8]],
+    // Zones de rebond des familles, côté droit (la gauche s'obtient par symétrie) : xb / yb (m)
+    direct: { yb: [4.5, 8.5] }, // rebond puis 2e rebond avant toute vitre (balle courte)
     glass: {
-      A: { xb: [2.5, 7.5], yb: [0.4, 3.2], angle: [[-6, 6], [-14, 14]], z0: [0.95, 1.9] },
-      B: { xb: [6.3, 9.3], yb: [0.4, 2.8], angle: [[10, 26], [18, 36]], z0: [0.95, 1.7] },
-      C: { xb: [7.4, 9.6], yb: [1.6, 4.5], angle: [[22, 38], [30, 48]], z0: [0.95, 1.6] },
-      D: { xb: [7.6, 9.6], yb: [3.6, 6.5], angle: [[26, 42], [34, 52]], z0: [0.95, 1.5] },
+      A: { xb: [2.5, 7.5], yb: [0.4, 3.2] },
+      B: { xb: [6.3, 9.3], yb: [0.4, 2.8] },
+      C: { xb: [7.4, 9.6], yb: [1.6, 4.5] },
+      D: { xb: [7.6, 9.6], yb: [3.6, 6.5] },
     },
   },
 
@@ -140,7 +126,7 @@ const CONFIG = {
    *   mode 'net'   : hauteur de passage au-dessus du filet (m), [niveau 1, niveau 5] ;
    *   mode 'speed' : vitesse au départ de la raquette (m/s), [niveau 1, niveau 5], trajectoire tendue ;
    *   depth        : distance du rebond à la vitre de fond du receveur (m) ;
-   *   kmh          : vitesse au départ admise (km/h), ordres de grandeur du brief (à calibrer) ;
+   *   kmh          : vitesse au départ admise (km/h) : avec l'air, il faut partir plus vite que sans ;
    *   apex         : hauteur maximale (m) avant le rebond ;
    *   contact      : hauteurs de frappe où le coup est jouable (m) ;
    *   spin         : effet (rad/s ; 100 rad/s ≈ 16 tours/s) — top : lift (> 0) ou coupé (< 0) ; side :
@@ -149,15 +135,15 @@ const CONFIG = {
   styles: {
     drive: { name: 'Balle de fond', mode: 'net', net: [[2.0, 2.9], [1.15, 1.75]], depth: [1.2, 8.6], kmh: [38, 72], apex: [0, 3.6], contact: [0.3, 1.9], spin: { top: [-60, 90], side: [0, 25] } },
     defense: { name: 'Défense après vitre', mode: 'net', net: [[2.3, 3.2], [1.5, 2.4]], depth: [1.0, 8.0], kmh: [35, 70], apex: [0, 4.2], contact: [0.3, 1.9], spin: { top: [-110, 30], side: [0, 30] } },
-    lob: { name: 'Lob', mode: 'net', net: [[5.1, 7.4], [4.7, 6.9]], depth: [0.6, 3.6], kmh: [28, 52], apex: [5.0, 8.5], contact: [0.2, 1.9], spin: { top: [20, 160], side: [0, 20] } },
+    lob: { name: 'Lob', mode: 'net', net: [[5.1, 7.4], [4.7, 6.9]], depth: [0.6, 3.6], kmh: [35, 60], apex: [5.0, 8.5], contact: [0.2, 1.9], spin: { top: [20, 160], side: [0, 20] } },
     // Lob court (raté ou sous pression) : retombe vers le milieu du court, à jouer au-dessus de la tête
-    lobShort: { name: 'Lob court', mode: 'net', net: [[3.3, 4.4], [3.1, 4.1]], depth: [3.6, 6.2], kmh: [22, 46], apex: [3.2, 5.4], contact: [0.2, 1.9], spin: { top: [0, 110], side: [0, 20] } },
-    chiquita: { name: 'Chiquita', mode: 'net', net: [[1.05, 1.4], [0.98, 1.25]], depth: [6.4, 9.3], kmh: [22, 48], apex: [0, 2.2], contact: [0.2, 1.5], spin: { top: [-40, 80], side: [0, 20] } },
-    volley: { name: 'Volée', mode: 'speed', speed: [[14, 18], [17, 22]], depth: [1.5, 8.6], kmh: [48, 82], apex: [0, 2.4], contact: [0.5, 1.95], spin: { top: [-170, -40], side: [0, 40] } },
-    bandeja: { name: 'Bandeja', mode: 'speed', speed: [[13, 16.5], [15.5, 20]], depth: [0.8, 4.8], kmh: [45, 75], apex: [0, 3.2], contact: [1.8, 3.1], spin: { top: [-200, -90], side: [20, 70] } },
-    vibora: { name: 'Víbora', mode: 'speed', speed: [[16, 19.5], [19, 24]], depth: [1.0, 5.2], kmh: [55, 90], apex: [0, 3.2], contact: [1.8, 3.1], spin: { top: [-170, -70], side: [100, 190], toWall: true } },
-    smash: { name: 'Smash', mode: 'speed', speed: [[22.5, 26], [26, 33]], depth: [3.0, 7.8], kmh: [80, 125], apex: [0, 3.2], contact: [2.0, 3.1], spin: { top: [0, 140], side: [0, 40] } },
-    serve: { name: 'Service', mode: 'net', net: [[1.55, 2.1], [1.15, 1.55]], depth: [3.3, 9.6], kmh: [32, 62], apex: [0, 2.6], contact: [0.55, 1.0], spin: { top: [-150, -50], side: [20, 90] } },
+    lobShort: { name: 'Lob court', mode: 'net', net: [[3.3, 4.4], [3.1, 4.1]], depth: [3.6, 6.2], kmh: [25, 50], apex: [3.2, 5.4], contact: [0.2, 1.9], spin: { top: [0, 110], side: [0, 20] } },
+    chiquita: { name: 'Chiquita', mode: 'net', net: [[1.05, 1.4], [0.98, 1.25]], depth: [6.4, 9.3], kmh: [25, 55], apex: [0, 2.2], contact: [0.2, 1.5], spin: { top: [-40, 80], side: [0, 20] } },
+    volley: { name: 'Volée', mode: 'speed', speed: [[14, 18], [17, 22]], depth: [1.5, 8.6], kmh: [48, 88], apex: [0, 2.4], contact: [0.5, 1.95], spin: { top: [-170, -40], side: [0, 40] } },
+    bandeja: { name: 'Bandeja', mode: 'speed', speed: [[13, 16.5], [15.5, 20]], depth: [0.8, 4.8], kmh: [45, 80], apex: [0, 3.2], contact: [1.8, 3.1], spin: { top: [-200, -90], side: [20, 70] } },
+    vibora: { name: 'Víbora', mode: 'speed', speed: [[16, 19.5], [19, 24]], depth: [1.0, 5.2], kmh: [55, 95], apex: [0, 3.2], contact: [1.8, 3.1], spin: { top: [-170, -70], side: [100, 190], toWall: true } },
+    smash: { name: 'Smash', mode: 'speed', speed: [[22.5, 26], [26, 33]], depth: [3.0, 7.8], kmh: [80, 130], apex: [0, 3.2], contact: [2.0, 3.1], spin: { top: [0, 140], side: [0, 40] } },
+    serve: { name: 'Service', mode: 'net', net: [[1.55, 2.1], [1.15, 1.55]], depth: [3.3, 9.6], kmh: [32, 70], apex: [0, 2.6], contact: [0.55, 1.0], spin: { top: [-150, -50], side: [20, 90] } },
   },
   minNetClearance: 0.05, // marge au-dessus de la bande pour un coup voulu (m)
 
@@ -205,25 +191,9 @@ const CONFIG = {
   },
 
   rally: {
-    // Échange continu : l'adversaire court jouer ton renvoi et renvoie depuis l'endroit où il le frappe
-    oppSpeed: 6, // vitesse max de l'adversaire (m/s)
-    oppHitHeight: 1.0, // il frappe ton renvoi quand il redescend à cette hauteur après le rebond (m)
-    oppMaxY: 19.2, // … et avant la vitre de fond adverse (m, la vitre est en y = 20)
-    oppStepIn: 2.5, // il ne laisse pas la balle filer plus de 2,5 m après le rebond : renvoi court = il avance
-    oppReach: 0.6, // décalage latéral entre l'adversaire et la balle qu'il frappe (m)
-    serve: { x: [2.5, 7.5], y: [17, 18.5], z: 1.0 }, // départ d'un nouveau point après une faute
-    // Hauteur de passage au-dessus du filet, niveau 1 → niveau 5 (m) : plus basse = balle plus tendue et rapide
-    netHeight: [[2.2, 3.2], [1.1, 1.8]],
-    attackDrop: 0.35, // jusqu'à 0,35 m plus bas quand l'adversaire frappe près du filet (renvoi court = attaque)
+    // Balle de fond ou défense frappée près du filet (renvoi court = attaque) : plus tendue
+    attackDrop: 0.35, // jusqu'à 0,35 m plus bas au-dessus du filet
     minNetHeight: 0.98, // jamais sous le haut du filet + marge (m)
-    hSpeed: [5, 24], // vitesse horizontale admise des balles adverses (m/s)
-  },
-  game: {
-    // Vitesse du jeu fixée par la difficulté adaptative (remplace l'ancien réglage) : le niveau 1 démarre
-    // plus lent, le niveau 5 est en temps réel
-    levelSpeed: [0.75, 0.84, 0.92, 0.97, 1],
-    missPause: 1.3, // pause après un échange perdu (s de jeu)
-    feedbackMs: 1800, // durée d'affichage du feedback (ms, temps réel)
   },
 };
 
