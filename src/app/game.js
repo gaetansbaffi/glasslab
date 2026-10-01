@@ -195,6 +195,8 @@ export function createGame(ctx) {
       audio.miss();
       audio.buzz([30, 40, 30]);
       onBallResult(e.result, e.shot);
+    } else if (e.type === 'userBall') {
+      if (e.spin) hud.spinTag(e.spin); // l'effet de la balle qui t'arrive
     } else if (e.type === 'call') {
       hud.call(e.mine ? 'À moi !' : 'À toi !');
     } else if (e.type === 'point') {
@@ -296,6 +298,10 @@ export function createGame(ctx) {
   function interpolatedBall(alpha, out) {
     const a = M.ballPosition(game.cur);
     if (!a) return null;
+    // Effet (rotation) de la balle : la vue la fait tourner
+    out.wx = a.wx;
+    out.wy = a.wy;
+    out.wz = a.wz;
     const b = game.prev.flight === game.cur.flight ? M.ballPosition(game.prev) : null;
     if (!b) {
       out.x = a.x;
@@ -431,7 +437,7 @@ export function createGame(ctx) {
       replay.frame(dt, aspect);
       if (!replay.active) gameView(dt, aspect);
     } else gameView(dt, aspect);
-    renderer.ball.update(replay.active ? replay.view : view);
+    renderer.ball.update(replay.active ? replay.view : view, game.screen === 'playing' || replay.active ? dt * (replay.active ? replay.speed : speed()) : 0);
     actors.forEach((a, i) => figures.update(i, a.skeleton, a.look, a.eye));
   }
 

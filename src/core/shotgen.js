@@ -280,17 +280,35 @@ function styleLaunch(origin, style, zone, level, rng, cfg) {
     T = netTime(origin, bounce, h, cfg);
   } else T = flatTime(origin, bounce, rnd(range(st.speed)));
   if (!T) return null;
-  const init = P.launchToBounce(origin, bounce, T);
+  const spin = st.spin ? styleSpin(origin, bounce, st.spin, rng) : null;
+  const init = P.launchToBounce(origin, bounce, T, undefined, spin);
   const kmh = P.speed(init) * 3.6;
   if (kmh < st.kmh[0] || kmh > st.kmh[1]) return null;
   if (!(init.vy < 0)) return null;
-  const tn = (NET_Y - origin.y) / init.vy;
+  const tn = P.reach(origin.y, init.vy, init.ay || 0, NET_Y, -1);
+  if (!(tn < T)) return null;
   const net = G.ballistic(init, tn, g);
   if (net.z < P.COURT.netHeight + cfg.minNetClearance || net.x < 0.2 || net.x > 9.8) return null;
-  const tTop = init.vz / g;
+  const tTop = init.vz / (g - (init.az || 0));
   const top = tTop > 0 && tTop < T ? G.ballistic(init, tTop, g).z : origin.z;
   if (top < st.apex[0] || top > st.apex[1]) return null;
-  return { init, net: { x: net.x, y: NET_Y, z: net.z, vx: net.vx, vy: net.vy, vz: net.vz }, tn, bounce };
+  return { init, net: Object.assign(net, { y: NET_Y }), tn, bounce };
+}
+
+/**
+ * Effet d'un coup (config.styles[style].spin) : lift / coupé tiré dans `top`, effet latéral d'intensité
+ * tirée dans `side` ; il part vers la paroi latérale la plus proche du rebond si `toWall` (víbora : la balle
+ * file vers la grille), sinon d'un côté au hasard. Retourne le vecteur rotation (rad/s).
+ */
+function styleSpin(origin, bounce, sp, rng) {
+  const top = lerp(sp.top[0], sp.top[1], rng());
+  let side = lerp(sp.side[0], sp.side[1], rng());
+  const dx = bounce.x - origin.x;
+  const dy = bounce.y - origin.y;
+  // Droite de la trajectoire : (dy, −dx) ; vers la paroi la plus proche du rebond, ou au hasard
+  const right = sp.toWall ? (bounce.x < 5 ? -1 : 1) * dy > 0 : rng() < 0.5;
+  if (!right) side = -side;
+  return P.spinVector(dx, dy, top, side);
 }
 
 /**
@@ -342,6 +360,7 @@ function generateTo(o) {
     const half = P.simulate(c.net, { maxFloorBounces: 2, tMax: 6 });
     if (!half.contacts.length || half.contacts[0].type !== 'floor') continue; // dehors : vitre avant le rebond
     const family = F.familyOf(half);
+    if (!family) continue; // trajectoire hors des familles (ex. deux fois la même vitre) : écartée
     if (o.family) {
       if (family !== o.family) continue;
       if (family === 'direct' ? half.endReason !== 'floor' : !glassPlausible(half, family, st.apex[1])) continue;

@@ -12,9 +12,17 @@
  *   - court complet ({ court: 'full' }) : les deux moitiés avec toutes leurs parois, et le filet comme
  *     obstacle (balle dans le filet, ou qui passe en frôlant la bande).
  *
- * Sans frottement de l'air ni effet, les mouvements en x et y sont rectilignes
- * et z est parabolique : chaque contact est calculé analytiquement (pas
- * d'intégration numérique), ce qui rend la simulation exacte et déterministe.
+ * Sans frottement de l'air, chaque segment de vol (entre deux contacts) a une accélération constante :
+ * la gravité, plus l'effet Magnus quand la balle tourne. Chaque contact est donc calculé analytiquement
+ * (pas d'intégration numérique), ce qui rend la simulation exacte et déterministe.
+ *
+ * Effets (rotation de la balle) : un état peut porter wx, wy, wz (vecteur rotation, rad/s). Sans ces champs,
+ * la balle suit exactement le modèle historique. Avec :
+ *   - en vol, l'effet Magnus a = k · (ω × v_h) (v_h : vitesse horizontale, figée au début du segment) :
+ *     le lift plonge, le coupé flotte, l'effet latéral courbe la trajectoire ;
+ *   - à chaque contact (sol, vitres), le frottement transforme une partie de la rotation en vitesse :
+ *     le coupé freine au rebond et « meurt » à la vitre (il en sort bas), le lift accélère au rebond et sort
+ *     plus haut de la vitre, l'effet latéral dévie la balle au rebond.
  */
 
 const COURT = {
@@ -45,6 +53,15 @@ const DEFAULT_PARAMS = {
   cordKeep: 0.45,
   cordSide: 0.7,
   cordLift: 0.6,
+  // Effets : accélération de Magnus = magnus · |ω × v_h| (m/s² pour des rad/s et des m/s)
+  magnus: 0.0011,
+  maxLift: 0.5, // une balle coupée ne compense jamais plus de la moitié de la gravité
+  spinInertia: 0.6, // moment d'inertie / (m R²) : sphère creuse à paroi épaisse
+  spinGrip: 0.375, // part du glissement dû à la rotation supprimée au contact (κ / (1 + κ) : roulement)
+  spinFloor: 0.5, // frottement balle / gazon sableux (limite le transfert rotation → vitesse)
+  spinGlass: 0.25, // frottement balle / vitre
+  spinKeep: 0.85, // rotation conservée à chaque contact (pertes)
+  spinNet: 0.3, // rotation conservée dans le filet ou sur la bande
 };
 
 const EPS = 1e-9;
@@ -65,16 +82,60 @@ function withParams(p) {
   return Object.assign({}, DEFAULT_PARAMS, p || {});
 }
 
-/** État après une durée tau en vol libre (exact). */
+/** État après une durée tau en vol libre (exact) : accélération du segment (gravité et Magnus) constante. */
 function advance(s, tau, g) {
-  return {
-    x: s.x + s.vx * tau,
-    y: s.y + s.vy * tau,
-    z: s.z + s.vz * tau - 0.5 * g * tau * tau,
-    vx: s.vx,
-    vy: s.vy,
-    vz: s.vz - g * tau,
+  const ax = s.ax || 0;
+  const ay = s.ay || 0;
+  const ge = g - (s.az || 0); // gravité effective
+  const o = {
+    x: s.x + s.vx * tau + 0.5 * ax * tau * tau,
+    y: s.y + s.vy * tau + 0.5 * ay * tau * tau,
+    z: s.z + s.vz * tau - 0.5 * ge * tau * tau,
+    vx: s.vx + ax * tau,
+    vy: s.vy + ay * tau,
+    vz: s.vz - ge * tau,
   };
+  if (s.wx !== undefined) {
+    o.wx = s.wx;
+    o.wy = s.wy;
+    o.wz = s.wz;
+    o.ax = ax;
+    o.ay = ay;
+    o.az = s.az || 0;
+  }
+  return o;
+}
+
+/**
+ * Accélération de Magnus du segment qui commence dans l'état s (modifié sur place) : a = k · (ω × v_h).
+ * Sans rotation (pas de champ wx), rien n'est ajouté.
+ */
+function setMagnus(s, P) {
+  if (s.wx === undefined) return s;
+  const k = P.magnus;
+  s.ax = -k * s.wz * s.vy;
+  s.ay = k * s.wz * s.vx;
+  s.az = Math.max(-P.g, Math.min(P.g * P.maxLift, k * (s.wx * s.vy - s.wy * s.vx)));
+  return s;
+}
+
+/**
+ * Premier instant τ ≥ 0 où la coordonnée p + v τ + ½ a τ² atteint `target` en s'en approchant
+ * (dir = −1 : par valeurs décroissantes, +1 : croissantes). Infinity si jamais.
+ * Sans accélération, c'est exactement le calcul linéaire historique.
+ */
+function reach(p, v, a, target, dir) {
+  if (!a) return dir * v > 0 ? Math.max(0, (target - p) / v) : Infinity;
+  const c = p - target;
+  if (dir * c >= 0 && dir * v > 0) return 0; // déjà au contact, en approche
+  const disc = v * v - 2 * a * c;
+  if (disc < 0) return Infinity;
+  const q = -0.5 * (v + (v >= 0 ? 1 : -1) * Math.sqrt(disc));
+  let best = Infinity;
+  for (const tau of q === 0 ? [0] : [q / (0.5 * a), c / q]) {
+    if (tau > EPS && tau < best && dir * (v + a * tau) > 0) best = tau;
+  }
+  return best;
 }
 
 /** Temps avant le prochain contact avec chaque surface (Infinity si aucun). */
@@ -82,20 +143,28 @@ function nextEventTimes(s, P) {
   const r = P.radius;
   const W = COURT.width;
   const t = { floor: Infinity, back: Infinity, left: Infinity, right: Infinity, net: Infinity };
-  // Sol : z + vz τ − ½gτ² = r  → racine positive
-  const h = s.z - r;
-  const disc = s.vz * s.vz + 2 * P.g * h;
-  if (disc >= 0) {
-    const tau = (s.vz + Math.sqrt(disc)) / P.g;
-    if (tau > EPS) t.floor = tau;
-  }
-  if (s.vy < 0) t.back = Math.max(0, (r - s.y) / s.vy);
-  if (s.vy > 0) t.net = Math.max(0, (COURT.depth - s.y) / s.vy);
-  if (s.vx < 0) t.left = Math.max(0, (r - s.x) / s.vx);
-  if (s.vx > 0) t.right = Math.max(0, (W - r - s.x) / s.vx);
+  t.floor = floorTime(s, P);
+  const ax = s.ax || 0;
+  const ay = s.ay || 0;
+  t.back = reach(s.y, s.vy, ay, r, -1);
+  t.net = reach(s.y, s.vy, ay, COURT.depth, 1);
+  t.left = reach(s.x, s.vx, ax, r, -1);
+  t.right = reach(s.x, s.vx, ax, W - r, 1);
   // Un contact à τ = 0 sur une paroi qu'on vient de quitter est impossible
   // car la vitesse normale a été inversée ; on garde donc τ ≥ 0.
   return t;
+}
+
+/** Sol : z + vz τ − ½ g' τ² = r (g' = gravité effective) → racine positive. */
+function floorTime(s, P) {
+  const ge = P.g - (s.az || 0);
+  const h = s.z - P.radius;
+  const disc = s.vz * s.vz + 2 * ge * h;
+  if (disc >= 0) {
+    const tau = (s.vz + Math.sqrt(disc)) / ge;
+    if (tau > EPS) return tau;
+  }
+  return Infinity;
 }
 
 /** Réflexion sur une surface. Retourne le nouvel état (copie). */
@@ -128,12 +197,75 @@ function reflect(s, type, P) {
     o.vy = s.vy * P.wallTangent;
     o.vz = s.vz * P.wallTangent;
   }
+  if (s.wx !== undefined) {
+    spinContact(o, s, type, P);
+    setMagnus(o, P);
+  }
   return o;
+}
+
+/** Normale de chaque surface, orientée vers le court (vers la balle). */
+const NORMALS = { floor: [0, 0, 1], back: [0, 1, 0], backFar: [0, -1, 0], left: [1, 0, 0], right: [-1, 0, 0] };
+
+/**
+ * Contact d'une balle qui tourne (o : état après la réflexion sans effet, modifié sur place).
+ * Le point de contact (r = −R n) glisse à la vitesse u = ω × r due à la rotation ; le frottement en
+ * supprime une partie (jusqu'au roulement, dans la limite du frottement disponible μ (1 + e) |v_n|) :
+ * la balle reçoit Δv = −k u et sa rotation change de Δω = (r × Δv) / (κ R²).
+ * Coupé au sol : u va vers l'avant → la balle freine. Lift : u vers l'arrière → elle accélère.
+ */
+function spinContact(o, s, type, P) {
+  const n = NORMALS[type];
+  if (!n) {
+    // Filet ou bande : la rotation est presque absorbée
+    o.wx = s.wx * P.spinNet;
+    o.wy = s.wy * P.spinNet;
+    o.wz = s.wz * P.spinNet;
+    return;
+  }
+  const R = P.radius;
+  const rx = -R * n[0];
+  const ry = -R * n[1];
+  const rz = -R * n[2];
+  const ux = s.wy * rz - s.wz * ry;
+  const uy = s.wz * rx - s.wx * rz;
+  const uz = s.wx * ry - s.wy * rx;
+  const un = Math.hypot(ux, uy, uz);
+  let wx = s.wx;
+  let wy = s.wy;
+  let wz = s.wz;
+  if (un > 1e-9) {
+    const floor = type === 'floor';
+    const vn = Math.abs(s.vx * n[0] + s.vy * n[1] + s.vz * n[2]);
+    const e = floor ? P.eFloor : P.eWall;
+    const dv = Math.min(P.spinGrip * un, (floor ? P.spinFloor : P.spinGlass) * (1 + e) * vn);
+    const k = dv / un;
+    const dvx = -k * ux;
+    const dvy = -k * uy;
+    const dvz = -k * uz;
+    o.vx += dvx;
+    o.vy += dvy;
+    o.vz += dvz;
+    const inv = 1 / (P.spinInertia * R * R);
+    wx += (ry * dvz - rz * dvy) * inv;
+    wy += (rz * dvx - rx * dvz) * inv;
+    wz += (rx * dvy - ry * dvx) * inv;
+  }
+  o.wx = wx * P.spinKeep;
+  o.wy = wy * P.spinKeep;
+  o.wz = wz * P.spinKeep;
+}
+
+/** Copie de l'état initial ; avec effet, l'accélération de Magnus est calculée si elle n'est pas fournie. */
+function initialState(init, P) {
+  const s = Object.assign({}, init);
+  if (s.wx !== undefined && s.ax === undefined) setMagnus(s, P);
+  return s;
 }
 
 /**
  * Simule une trajectoire.
- * @param {{x,y,z,vx,vy,vz}} init état initial
+ * @param {{x,y,z,vx,vy,vz,wx?,wy?,wz?}} init état initial (rotation facultative, rad/s)
  * @param {object} [opts] { params, tMax, maxFloorBounces, court: 'half' (défaut) | 'full' }
  * @returns {{ segments: Array<{t0:number, s:object}>, contacts: Array, endT:number, endReason:string, params:object }}
  */
@@ -144,7 +276,7 @@ function simulate(init, opts) {
   const tMax = opts.tMax != null ? opts.tMax : 6;
   const maxFloor = opts.maxFloorBounces != null ? opts.maxFloorBounces : 2;
 
-  let s = Object.assign({}, init);
+  let s = initialState(init, P);
   let t = 0;
   const segments = [{ t0: 0, s: Object.assign({}, s) }];
   const contacts = [];
@@ -201,24 +333,18 @@ function nextEventTimesFull(s, P) {
   const L = COURT.length;
   const N = COURT.depth;
   const t = { floor: Infinity, back: Infinity, backFar: Infinity, left: Infinity, right: Infinity, netFace: Infinity, netCross: Infinity };
-  const h = s.z - r;
-  const disc = s.vz * s.vz + 2 * P.g * h;
-  if (disc >= 0) {
-    const tau = (s.vz + Math.sqrt(disc)) / P.g;
-    if (tau > EPS) t.floor = tau;
-  }
-  if (s.vy < 0) t.back = Math.max(0, (r - s.y) / s.vy);
-  if (s.vy > 0) t.backFar = Math.max(0, (L - r - s.y) / s.vy);
-  if (s.vx < 0) t.left = Math.max(0, (r - s.x) / s.vx);
-  if (s.vx > 0) t.right = Math.max(0, (W - r - s.x) / s.vx);
+  t.floor = floorTime(s, P);
+  const ax = s.ax || 0;
+  const ay = s.ay || 0;
+  t.back = reach(s.y, s.vy, ay, r, -1);
+  t.backFar = reach(s.y, s.vy, ay, L - r, 1);
+  t.left = reach(s.x, s.vx, ax, r, -1);
+  t.right = reach(s.x, s.vx, ax, W - r, 1);
   // Filet : d'abord la face (la balle touche le plan du filet), puis le passage du centre au-dessus
-  if (s.vy > 0) {
-    if (s.y < N - r - 1e-7) t.netFace = (N - r - s.y) / s.vy;
-    else if (s.y < N - 1e-7) t.netCross = (N - s.y) / s.vy;
-  } else if (s.vy < 0) {
-    if (s.y > N + r + 1e-7) t.netFace = (N + r - s.y) / s.vy;
-    else if (s.y > N + 1e-7) t.netCross = (N - s.y) / s.vy;
-  }
+  if (s.y < N - r - 1e-7) t.netFace = reach(s.y, s.vy, ay, N - r, 1);
+  else if (s.y > N + r + 1e-7) t.netFace = reach(s.y, s.vy, ay, N + r, -1);
+  else if (s.vy > 0 && s.y < N - 1e-7) t.netCross = reach(s.y, s.vy, ay, N, 1);
+  else if (s.vy < 0 && s.y > N + 1e-7) t.netCross = reach(s.y, s.vy, ay, N, -1);
   return t;
 }
 
@@ -234,7 +360,7 @@ function simulateFull(init, opts) {
   const tMax = opts.tMax != null ? opts.tMax : 8;
   const maxFloor = opts.maxFloorBounces != null ? opts.maxFloorBounces : 2;
   const H = COURT.netHeight;
-  let s = Object.assign({}, init);
+  let s = initialState(init, P);
   let t = 0;
   const segments = [{ t0: 0, s: Object.assign({}, s) }];
   const contacts = [];
@@ -307,6 +433,17 @@ function mirrorState(s) {
     o.vy = -s.vy;
     o.vz = s.vz;
   }
+  // Demi-tour autour de l'axe vertical : la rotation et l'accélération tournent comme des vecteurs
+  if (s.wx !== undefined) {
+    o.wx = -s.wx;
+    o.wy = -s.wy;
+    o.wz = s.wz;
+    if (s.ax !== undefined) {
+      o.ax = -s.ax;
+      o.ay = -s.ay;
+      o.az = s.az;
+    }
+  }
   return o;
 }
 
@@ -362,18 +499,57 @@ function classify(sim) {
   return { F: 'A', FS: 'B', SF: 'C', S: 'D' }[key] || null;
 }
 
-/** Vitesse initiale pour qu'une balle partie de `from` touche le sol en `to` après T secondes. */
-function launchToBounce(from, to, T, params) {
+/**
+ * Vitesse initiale pour qu'une balle partie de `from` touche le sol en `to` après T secondes.
+ * spin (facultatif) : vecteur rotation { wx, wy, wz } (rad/s, voir spinVector) ; le lancer compense alors
+ * exactement l'effet Magnus (la balle visée rebondit au même endroit, par une autre trajectoire).
+ */
+function launchToBounce(from, to, T, params, spin) {
   const P = withParams(params);
   const r = P.radius;
-  return {
-    x: from.x,
-    y: from.y,
-    z: from.z,
-    vx: (to.x - from.x) / T,
-    vy: (to.y - from.y) / T,
-    vz: (r - from.z + 0.5 * P.g * T * T) / T,
-  };
+  if (!spin) {
+    return {
+      x: from.x,
+      y: from.y,
+      z: from.z,
+      vx: (to.x - from.x) / T,
+      vy: (to.y - from.y) / T,
+      vz: (r - from.z + 0.5 * P.g * T * T) / T,
+    };
+  }
+  // Accélération latérale ax = −k ωz vy, ay = k ωz vx : système linéaire résolu exactement
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const al = 0.5 * P.magnus * spin.wz * T;
+  const den = T * (1 + al * al);
+  const s = { x: from.x, y: from.y, z: from.z, vx: (dx + al * dy) / den, vy: (dy - al * dx) / den, vz: 0, wx: spin.wx, wy: spin.wy, wz: spin.wz };
+  setMagnus(s, P);
+  s.vz = (r - from.z + 0.5 * (P.g - s.az) * T * T) / T;
+  return s;
+}
+
+/**
+ * Vecteur rotation (rad/s) d'une balle qui part dans la direction horizontale (dx, dy) :
+ *   top  : lift (> 0) ou coupé (< 0), autour de l'axe horizontal perpendiculaire à la trajectoire ;
+ *   side : effet latéral (> 0 : la balle tourne vers la droite de sa trajectoire, en vol et au rebond) —
+ *          rotation autour de la verticale plus une part autour de l'axe de la trajectoire (inclinaison
+ *          de l'axe, comme une víbora), qui fait dévier la balle au rebond.
+ */
+function spinVector(dx, dy, top, side) {
+  const l = Math.hypot(dx, dy) || 1;
+  const ux = dx / l;
+  const uy = dy / l;
+  const tilt = 0.6;
+  return { wx: -top * uy + side * tilt * ux, wy: top * ux + side * tilt * uy, wz: -side };
+}
+
+/** Effet d'un état, par rapport à sa trajectoire : { top (lift > 0, coupé < 0), side, rate (rad/s) }. */
+function spinParts(s) {
+  if (s.wx === undefined) return { top: 0, side: 0, rate: 0 };
+  const l = Math.hypot(s.vx, s.vy) || 1;
+  const ux = s.vx / l;
+  const uy = s.vy / l;
+  return { top: -s.wx * uy + s.wy * ux, side: -s.wz, rate: Math.hypot(s.wx, s.wy, s.wz) };
 }
 
 /**
@@ -415,6 +591,10 @@ const Physics = {
   stateAt,
   sample,
   advance,
+  reach,
+  setMagnus,
+  spinVector,
+  spinParts,
   reflect,
   classify,
   contactSequence,

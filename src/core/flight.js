@@ -121,7 +121,7 @@ function apex(flight) {
   const t1 = first ? first.t : flight.sim.endT;
   const s = flight.init;
   if (s.vz <= 0) return s.z;
-  const tTop = Math.min(t1, s.vz / flight.sim.params.g);
+  const tTop = Math.min(t1, s.vz / (flight.sim.params.g - (s.az || 0)));
   return G.ballistic(s, tTop, flight.sim.params.g).z;
 }
 

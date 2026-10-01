@@ -2,6 +2,8 @@
  * Glass Lab — balle et aides visuelles (Three.js).
  *   En jeu, toujours actives et discrètes : balle grossie ≈ 2× avec contour, ombre ronde au sol à la
  *   verticale de la balle, trait balle → sol, anneau de portée aux pieds du joueur.
+ *   La balle porte sa couture blanche et tourne selon son effet (rotation ralentie pour rester lisible :
+ *   un coupé roule vers l'arrière, un lift vers l'avant, un latéral tourne comme une toupie).
  *   Dans le Détail seulement : trajectoire, meilleur point (vert), ta frappe (orange).
  */
 import * as THREE from 'three';
@@ -11,6 +13,54 @@ import { sv } from './court.js';
 const BALL_VISUAL_RADIUS = 0.066; // ≈ 2 × le rayon réel (3,3 cm)
 const RADIAL = 6;
 const COLORS = { ball: 0xf2ff1f, ballEdge: 0x2e3300, best: 0x2ee88a, mine: 0xff9f1c };
+// Rotation affichée : l'effet réel (jusqu'à ≈ 30 tours/s) serait illisible à 60 images/s
+const SPIN_VISUAL = 0.12;
+const SPIN_VISUAL_MAX = 22; // rad/s
+
+/**
+ * Texture de la balle : jaune avec la couture blanche (courbe classique des balles de padel et de tennis :
+ * x = a cos t + b cos 3t, y = a sin t − b sin 3t, z = 2√(ab) sin 2t), projetée comme les UV de
+ * THREE.SphereGeometry.
+ */
+function seamTexture() {
+  const W = 256;
+  const H = 128;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f2ff1f';
+  g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = 9;
+  g.lineCap = 'round';
+  const a = 0.75;
+  const b = 0.25;
+  const k = 2 * Math.sqrt(a * b);
+  let prev = null;
+  for (let i = 0; i <= 480; i++) {
+    const t = (i / 480) * 2 * Math.PI;
+    let x = a * Math.cos(t) + b * Math.cos(3 * t);
+    let y = a * Math.sin(t) - b * Math.sin(3 * t);
+    let z = k * Math.sin(2 * t);
+    const l = Math.hypot(x, y, z);
+    x /= l;
+    y /= l;
+    z /= l;
+    const u = (((Math.atan2(z, -x) / (2 * Math.PI)) % 1) + 1) % 1;
+    const p = { u: u * W, v: (Math.acos(Math.max(-1, Math.min(1, y))) / Math.PI) * H };
+    if (prev && Math.abs(p.u - prev.u) < W / 2) {
+      g.beginPath();
+      g.moveTo(prev.u, prev.v);
+      g.lineTo(p.u, p.v);
+      g.stroke();
+    }
+    prev = p;
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 /** Polyligne paramétrée par l'indice des points : rebonds anguleux, segment j = intervalle de temps j. */
 class IndexPolyline extends THREE.Curve {
@@ -32,7 +82,7 @@ class IndexPolyline extends THREE.Curve {
 export function createBallView(scene, track) {
   // Balle très visible + contour sombre (lisible devant le ciel comme devant le gazon)
   const ballGeo = track(new THREE.SphereGeometry(BALL_VISUAL_RADIUS, 16, 12));
-  const ball = new THREE.Mesh(ballGeo, track(new THREE.MeshBasicMaterial({ color: COLORS.ball })));
+  const ball = new THREE.Mesh(ballGeo, track(new THREE.MeshBasicMaterial({ color: 0xffffff, map: track(seamTexture()) })));
   const edge = new THREE.Mesh(ballGeo, track(new THREE.MeshBasicMaterial({ color: COLORS.ballEdge, side: THREE.BackSide })));
   edge.scale.setScalar(1.3);
   ball.add(edge);
@@ -123,15 +173,28 @@ export function createBallView(scene, track) {
     return lo * RADIAL * 6;
   }
 
+  const spinAxis = new THREE.Vector3();
+
+  /** Rotation affichée pendant dt (s) : vecteur rotation monde { wx, wy, wz } (rad/s) → repère de la scène. */
+  function spinBall(w, dt) {
+    if (!w || !(dt > 0)) return;
+    spinAxis.set(w.wx, w.wz, -w.wy); // même changement de repère que les positions (rotation propre)
+    const rate = spinAxis.length();
+    if (rate < 1e-6) return;
+    ball.rotateOnWorldAxis(spinAxis.divideScalar(rate), Math.min(SPIN_VISUAL_MAX, rate * SPIN_VISUAL) * dt);
+  }
+
   /**
-   * v = { ball: {x,y,z} | null, reach: {x,y} | null, pathT: number | null (Détail : trajectoire jusqu'à t),
-   *       best: { bx, by, bz, px, py } | null, mine: { bx, by, bz } | null }
+   * v = { ball: {x,y,z, wx?,wy?,wz?} | null, reach: {x,y} | null, pathT: number | null (Détail : trajectoire
+   *       jusqu'à t), best: { bx, by, bz, px, py } | null, mine: { bx, by, bz } | null } ; dt : durée de
+   *       l'image (s de jeu), pour faire tourner la balle selon son effet.
    */
-  function update(v) {
+  function update(v, dt) {
     const b = v.ball;
     ball.visible = shadow.visible = !!b;
     stem.visible = !!(b && b.z > 0.06);
     if (b) {
+      if (b.wx !== undefined) spinBall(b, dt);
       G.worldToSceneInto(ball.position, b.x, b.y, b.z);
       G.worldToSceneInto(shadow.position, b.x, b.y, 0.006);
       shadowMat.opacity = 0.55 * Math.max(0.3, 1 - b.z / 5);

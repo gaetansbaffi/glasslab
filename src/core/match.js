@@ -47,7 +47,6 @@ const TOSS_Z = 1.05; // la balle est lâchée à cette hauteur, rebondit, puis e
 const TOSS_FALL = Math.sqrt((2 * (TOSS_Z - P.DEFAULT_PARAMS.radius)) / P.DEFAULT_PARAMS.g);
 const SERVE_DROP = TOSS_FALL * (1 + P.DEFAULT_PARAMS.eFloor); // du lâcher à la frappe (≈ 0,8 s)
 const SERVE_Z = P.DEFAULT_PARAMS.radius + P.DEFAULT_PARAMS.eFloor * P.DEFAULT_PARAMS.eFloor * (TOSS_Z - P.DEFAULT_PARAMS.radius);
-const SERVE_FAULTS = [0.08, 0.035]; // fautes des serveurs IA : premier, deuxième service
 
 /* ---------- Repères ---------- */
 
@@ -211,7 +210,7 @@ function assignReceiver(s) {
     } else {
       s.recv = { player: 0, user: { shot, pending: null, spawnPos: { x: s.players[0].x, y: s.players[0].y }, serve: !!f.serve } };
       s.balls++;
-      s.events.push({ type: 'userBall', index: s.index, family: shot.family, central: who.central, serve: !!f.serve });
+      s.events.push({ type: 'userBall', index: s.index, family: shot.family, central: who.central, serve: !!f.serve, spin: Q.spinOf(shot.init).label });
       if (who.central) s.events.push({ type: 'call', by: 1, mine: false });
       return;
     }
@@ -587,7 +586,7 @@ function doServe(s) {
   const seed = SG.mixSeed(s.seed, 7000 + s.index * 5 + (sv.second ? 1 : 0));
   let flight = null;
   const base = { origin: sv.contact, team, style: 'serve', level: s.level, config: cfg };
-  if (sv.by !== 0 && rng() < SERVE_FAULTS[sv.second ? 1 : 0]) {
+  if (sv.by !== 0 && rng() < cfg.serveFaults[sv.second ? 1 : 0]) {
     // Faute de service : dans le filet ou trop long (au-delà de la ligne de service)
     if (rng() < 0.5) flight = errorFlight(s, sv.contact, team, 'serve', rng);
     else flight = SG.generateTo(Object.assign({}, base, { zone: { x: box.x, y: [1.2, 2.8] }, seed: seed ^ 0x51, attempts: 80 }));

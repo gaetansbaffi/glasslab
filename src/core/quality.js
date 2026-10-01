@@ -284,10 +284,39 @@ const RULE_BY_BEST = {
  * Détail d'une balle : lignes chiffrées (angles d'incidence, vitesse après rebond, dégagement)
  * et règle à retenir. best = shot.best.
  */
+/** Ce que l'effet change pour le receveur. */
+const SPIN_HINTS = {
+  cut: 'rebond bas et freiné, elle sort peu de la vitre : avance-toi et prépare une frappe basse',
+  top: 'rebond haut et rapide, elle sort fort de la vitre : recule et laisse-la venir',
+  side: 'elle dévie au rebond, vers la grille : décale-toi du côté de l’effet',
+};
+
+/**
+ * Effet d'une balle (état avec rotation) en mots : { label (« Balle coupée », « Balle liftée »,
+ * « Effet latéral », « Coupée latérale »… ou null si l'effet est faible), turns (tours / s), hint }.
+ */
+function spinOf(s) {
+  const sp = P.spinParts(s);
+  const turns = sp.rate / (2 * Math.PI);
+  const cut = sp.top <= -50;
+  const top = sp.top >= 50;
+  const side = Math.abs(sp.side) >= 70;
+  if (!cut && !top && !side) return { label: null, turns, hint: '' };
+  let label;
+  if (cut) label = side ? 'Coupée latérale' : 'Balle coupée';
+  else if (top) label = side ? 'Liftée latérale' : 'Balle liftée';
+  else label = 'Effet latéral';
+  let hint = cut ? SPIN_HINTS.cut : top ? SPIN_HINTS.top : SPIN_HINTS.side;
+  if (side && (cut || top)) hint += ' ; elle dévie aussi au rebond, vers la grille';
+  return { label, turns, hint };
+}
+
 function explainBall(shot, r) {
   const lines = [];
   const floor = shot.sim.contacts[0];
   const h = Math.max(...P.sample(shot.sim, 1 / 60, floor.t, shot.endT).map((b) => b.z));
+  const spin = spinOf(shot.init);
+  if (spin.label) lines.push(`Effet : ${spin.label.toLowerCase()} (≈ ${Math.round(spin.turns)} tours/s) — ${spin.hint}.`);
   lines.push(`Rebond au sol à ${fmt(floor.pos.y, 1)} m du fond : ${kmh(P.speed(floor.vIn))} → ${kmh(P.speed(floor.vOut))} km/h, la balle remonte jusqu'à ${fmt(h)} m.`);
   for (const c of shot.sim.contacts) {
     if (c.type === 'floor') continue;
@@ -344,6 +373,7 @@ const Quality = {
   bestChoice,
   doublesContext,
   doublesAdvice,
+  spinOf,
   weakness,
   feedback,
   explainBall,

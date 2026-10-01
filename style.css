@@ -171,6 +171,15 @@ button { font: inherit; color: inherit; }
 }
 .point-msg.won { border-color: var(--good); }
 .point-msg.lost { border-color: var(--bad); }
+/* Effet de la balle qui t'arrive (coupé, lifté, latéral) : texte toujours présent, couleur en appui */
+.spin-tag {
+  position: absolute; left: 50%; top: calc(52px + var(--safe-t)); transform: translateX(-50%);
+  padding: 4px 12px; border-radius: 999px; background: rgba(12, 20, 28, 0.78); font-weight: 800; font-size: 14px;
+  pointer-events: none; white-space: nowrap; border: 2px solid #8ecbff;
+}
+.spin-tag.cut { border-color: #6fb7ff; }
+.spin-tag.top { border-color: #ffb347; }
+.spin-tag.side { border-color: #d39cff; }
 .call {
   position: absolute; left: 0; top: 0; padding: 4px 10px; border-radius: 12px; background: #ffffff; color: #0b1219;
   font-weight: 900; font-size: 14px; pointer-events: none; white-space: nowrap; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);

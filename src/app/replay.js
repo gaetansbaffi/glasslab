@@ -59,6 +59,9 @@ export function createReplay({ renderer, user }) {
     ballPos.x = b.x;
     ballPos.y = b.y;
     ballPos.z = b.z;
+    ballPos.wx = b.wx;
+    ballPos.wy = b.wy;
+    ballPos.wz = b.wz;
     view.pathT = rp.t;
     const bb = shot.best.best;
     Object.assign(best, { bx: bb.ball.x, by: bb.ball.y, bz: bb.ball.z, px: bb.pos.x, py: bb.pos.y });
@@ -104,6 +107,7 @@ export function createReplay({ renderer, user }) {
     get active() {
       return rp.active;
     },
+    speed: REPLAY_SPEED,
     view,
     start,
     stop,

@@ -167,6 +167,19 @@ export function createHud() {
     pointTimer = setTimeout(() => (el.hidden = true), 1500);
   }
 
+  /* ----- Effet de la balle qui t'arrive : étiquette brève (« Balle coupée », « Balle liftée »…) ----- */
+
+  let spinTimer = 0;
+  function spinTag(label) {
+    const el = $('spinTag');
+    const l = label.toLowerCase();
+    el.className = 'spin-tag ' + (l.includes('coup') ? 'cut' : l.includes('lift') ? 'top' : 'side');
+    el.textContent = label;
+    el.hidden = false;
+    clearTimeout(spinTimer);
+    spinTimer = setTimeout(() => (el.hidden = true), 1300);
+  }
+
   /* ----- Score : tableau discret en haut à gauche ----- */
 
   function setScore(d) {
@@ -298,6 +311,7 @@ export function createHud() {
     call,
     placeCall,
     point,
+    spinTag,
     setScore,
     banner,
     servePrompt,

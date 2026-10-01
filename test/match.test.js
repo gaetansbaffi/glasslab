@@ -305,15 +305,17 @@ test('ton service : il attend Frappe ; la balle est lâchée, rebondit, puis par
 test('fautes de service : deuxième service, double faute = point au receveur ; volée au retour = faute', () => {
   let faults = 0;
   let seconds = 0;
+  // Serveurs IA plus fautifs que dans le jeu (8 % et 3,5 %) : le mécanisme est vérifié quel que soit le hasard
+  const config = Object.assign({}, CFG, { serveFaults: [0.35, 0.25] });
   for (const seed of [91, 92, 93, 94]) {
-    const { events } = play(seed, 200, human);
+    const { events } = play(seed, 200, human, null, { config });
     for (const e of events) {
       if (e.type === 'fault') faults++;
       if (e.type === 'serveSetup' && e.second) seconds++;
       if (e.type === 'point' && e.reason === 'doubleFault') assert(e.winner !== M.ROSTER[e.by].team, 'double faute : point au receveur');
     }
   }
-  assert(faults >= 2 && seconds >= faults - 1, `fautes ${faults}, deuxièmes services ${seconds}`);
+  assert(faults >= 4 && seconds >= faults - 1, `fautes ${faults}, deuxièmes services ${seconds}`);
   // Volée au retour de service : on frappe avant le rebond
   let st = M.createMatch({ seed: 12, level: 3 });
   let missed = null;

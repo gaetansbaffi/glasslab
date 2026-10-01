@@ -129,9 +129,21 @@ function setTarget(agent, target, pace) {
  * (phase de la foulée pour l'animation).
  */
 function stepAgent(agent, t, dt, p, bounds) {
-  const want = t < agent.reactAt ? { x: 0, y: 0 } : arriveVelocity(agent, agent.target, p, dt, agent.pace);
+  const want = t < agent.reactAt ? { x: 0, y: 0 } : arriveVelocity(agent, insideBounds(agent.target, bounds), p, dt, agent.pace);
   const m = stepVelocity(agent, want, dt, p, bounds);
   return Object.assign({}, agent, m, { dist: agent.dist + Math.hypot(m.x - agent.x, m.y - agent.y) });
+}
+
+/**
+ * Cible ramenée à 10 cm à l'intérieur des bornes : l'agent freine avant la paroi (ou le filet) au lieu de
+ * s'y arrêter net.
+ */
+function insideBounds(target, bounds) {
+  if (!bounds) return target;
+  const m = 0.1;
+  const x = Math.max(bounds.xMin + m, Math.min(bounds.xMax - m, target.x));
+  const y = Math.max(bounds.yMin + m, Math.min(bounds.yMax - m, target.y));
+  return x === target.x && y === target.y ? target : { x, y };
 }
 
 /**

@@ -185,16 +185,31 @@ function keyboardVector(keys) {
 
 /* ---------- Balle avant le filet (côté adverse) ---------- */
 
-/** État balistique exact après dt secondes (dt peut être négatif : remonter le temps). */
+/**
+ * État balistique exact après dt secondes (dt peut être négatif : remonter le temps). Avec effet, l'état
+ * porte l'accélération de Magnus de son segment (ax, ay, az), constante : la formule reste exacte.
+ */
 function ballistic(s, dt, g) {
-  return {
-    x: s.x + s.vx * dt,
-    y: s.y + s.vy * dt,
-    z: s.z + s.vz * dt - 0.5 * g * dt * dt,
-    vx: s.vx,
-    vy: s.vy,
-    vz: s.vz - g * dt,
+  const ax = s.ax || 0;
+  const ay = s.ay || 0;
+  const ge = g - (s.az || 0);
+  const o = {
+    x: s.x + s.vx * dt + 0.5 * ax * dt * dt,
+    y: s.y + s.vy * dt + 0.5 * ay * dt * dt,
+    z: s.z + s.vz * dt - 0.5 * ge * dt * dt,
+    vx: s.vx + ax * dt,
+    vy: s.vy + ay * dt,
+    vz: s.vz - ge * dt,
   };
+  if (s.wx !== undefined) {
+    o.wx = s.wx;
+    o.wy = s.wy;
+    o.wz = s.wz;
+    o.ax = ax;
+    o.ay = ay;
+    o.az = s.az || 0;
+  }
+  return o;
 }
 
 /**
