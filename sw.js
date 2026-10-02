@@ -2,6 +2,11 @@
  * Glass Lab — service worker : cache-first des fichiers locaux, jeu jouable hors ligne après le premier
  * chargement. Sur GitHub Pages, VERSION est remplacée à chaque publication par le commit publié
  * (tools/publier.sh) : l'ancien cache est supprimé à l'activation. En local, la changer à la main.
+ *
+ * Mise à jour : la nouvelle version relit chaque fichier sur le réseau (jamais le cache HTTP du
+ * navigateur, qui rendrait l'ancienne) ; un fichier introuvable ne bloque pas la mise à jour (il sera
+ * chargé depuis le réseau) ; la fiche de version (publication.txt) est toujours lue sur le réseau.
+ * FILES doit lister exactement les fichiers du jeu (vérifié par test/pwa.test.js).
  */
 const VERSION = 'glasslab-v4.5.0';
 const FILES = [
@@ -35,7 +40,6 @@ const FILES = [
   './src/core/physics.js',
   './src/core/players.js',
   './src/core/quality.js',
-  './src/core/rally.js',
   './src/core/score.js',
   './src/core/shotgen.js',
   './src/core/stats.js',
@@ -43,7 +47,12 @@ const FILES = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(FILES)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches
+      .open(VERSION)
+      .then((cache) => Promise.all(FILES.map((f) => cache.add(new Request(f, { cache: 'reload' })).catch(() => null))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -59,6 +68,11 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  // Fiche de version : toujours la plus récente (réseau d'abord, cache hors ligne)
+  if (url.origin === self.location.origin && url.pathname.endsWith('/publication.txt')) {
+    event.respondWith(fetch(req.url, { cache: 'no-store' }).catch(() => caches.match(req)));
+    return;
+  }
   // Ouverture de la page (avec ou sans ?seed=, ?debug=…) : la page en cache
   if (req.mode === 'navigate' && url.origin === self.location.origin) {
     event.respondWith(caches.match('./index.html').then((hit) => hit || fetch(req)));

@@ -17,6 +17,7 @@
 #   2. La version du service worker devient le commit publié : chaque publication remplace le cache hors
 #      ligne des téléphones, sans dépendre d'une modification à la main de sw.js.
 #   3. publication.txt (commit, origine, date) est publié avec le site : l'accueil affiche la version.
+#   4. Publication refusée si le service worker liste un fichier absent (sa mise à jour échouerait).
 set -euo pipefail
 
 sha="${GITHUB_SHA:?GITHUB_SHA manquant}"
@@ -42,6 +43,10 @@ touch "$site/.nojekyll"
 sed -i "s/^const VERSION = '[^']*';/const VERSION = 'glasslab-${short}';/" "$site/sw.js"
 grep -q "^const VERSION = 'glasslab-${short}';" "$site/sw.js" || { echo "sw.js : VERSION introuvable" >&2; exit 1; }
 printf '%s %s %s\n' "$sha" "$ref" "$(date -u +%Y-%m-%dT%H:%MZ)" > "$site/publication.txt"
+# Chaque fichier listé par le service worker doit exister : sinon l'installation de la nouvelle version
+# échoue sur les téléphones, qui restent bloqués sur l'ancienne
+missing=$(sed -n "/^const FILES = \[/,/^\];/p" "$site/sw.js" | grep -o "'[^']*'" | tr -d "'" | while read -r f; do [ "$f" = "./" ] || [ -e "$site/$f" ] || echo "$f"; done || true)
+[ -z "$missing" ] || { echo "sw.js liste des fichiers absents : $missing" >&2; exit 1; }
 
 cd "$site"
 git init -q

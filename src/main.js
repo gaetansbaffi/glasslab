@@ -28,6 +28,7 @@ let input = null;
 let hud = null;
 let game = null;
 let perf = null;
+let updateReady = false; // nouvelle version installée pendant un match : rechargement au retour à l'accueil
 const audio = createAudio();
 
 /* ---------- Écrans ---------- */
@@ -39,6 +40,7 @@ function onScreen(name) {
   input.setEnabled(playing);
   device.keepAwake(playing || name === 'detail');
   if (name === 'home') {
+    if (updateReady) return location.reload();
     hud.renderHome(store.save);
     hud.show('home');
   } else if (name === 'over') hud.show('matchEnd');
@@ -268,7 +270,7 @@ function boot() {
  * (tools/publier.sh : commit, origine, date). Absent en local : rien n'est affiché.
  */
 function showBuild() {
-  fetch('publication.txt')
+  fetch('publication.txt', { cache: 'no-store' })
     .then((r) => (r.ok ? r.text() : ''))
     .then((text) => {
       const [sha, , date] = text.trim().split(/\s+/);
@@ -281,13 +283,29 @@ function showBuild() {
     .catch(() => {});
 }
 
-/** PWA : service worker (hors ligne après le premier chargement), seulement en HTTPS ou en local. */
+/**
+ * PWA : service worker (hors ligne après le premier chargement), seulement en HTTPS ou en local.
+ * Mise à jour automatique : vérifiée à l'ouverture et à chaque retour dans l'application ; quand une
+ * nouvelle version prend la main, la page se recharge à l'accueil (jamais en plein match).
+ */
 function registerServiceWorker() {
   try {
     const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    if ('serviceWorker' in navigator && (location.protocol === 'https:' || local) && !params.has('nosw')) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
-    }
+    if (!('serviceWorker' in navigator) || !(location.protocol === 'https:' || local) || params.has('nosw')) return;
+    const sw = navigator.serviceWorker;
+    const hadController = !!sw.controller; // première visite : rien à recharger
+    sw.register('./sw.js', { updateViaCache: 'none' })
+      .then((reg) => {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      })
+      .catch(() => {});
+    sw.addEventListener('controllerchange', () => {
+      if (!hadController || updateReady) return;
+      updateReady = true;
+      if (game && game.screen === 'home') location.reload();
+    });
   } catch (e) {
     /* ignoré */
   }
