@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#0b1219">
   <title>Glass Lab · Simulateur de vitres</title>
   <link rel="icon" href="icons/icon-192.png">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three@0.170.0/three.module.min.js" } }
+  </script>
   <style>
     :root { --bg: #0b1219; --panel: #131e29; --line: #253445; --text: #eef3f7; --muted: #9fb0c0; --accent: #f2ff1f; --glass: #8fe3ff; --mesh: #a6b1bd; --door: #ff9f1c; }
     * { box-sizing: border-box; }
@@ -24,6 +27,8 @@
     canvas { width: 100%; display: block; border-radius: 10px; background: #0e1822; touch-action: manipulation; }
     #viewTop { aspect-ratio: 1 / 2; max-height: 72vh; cursor: crosshair; }
     #viewSide { aspect-ratio: 20 / 7; }
+    #view3d { aspect-ratio: 16 / 10; max-height: 70vh; background: #9fcdee; }
+    .cams { margin-top: 10px; }
     .hint { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chip { border: 1px solid var(--line); background: #182634; color: var(--text); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; }
@@ -74,11 +79,26 @@
     </section>
 
     <section class="views" aria-label="Trajectoire">
+      <figure class="card" style="margin:0" id="card3d">
+        <h2>Sur le terrain</h2>
+        <canvas id="view3d" role="img" aria-label="Le court en 3D, vu depuis la place choisie"></canvas>
+        <div class="chips cams" id="cams" role="group" aria-label="Place de la caméra">
+          <button class="chip on" type="button" data-cam="player">Toi, sur le terrain</button>
+          <button class="chip" type="button" data-cam="behind">Derrière ta vitre</button>
+          <button class="chip" type="button" data-cam="side">De côté</button>
+          <button class="chip" type="button" data-cam="hitter">À la place du frappeur</button>
+        </div>
+        <p class="hint" id="hint3d">Ta place sur le terrain : touche ton camp dans la vue de dessus en mode « Placer : toi ».</p>
+      </figure>
       <div class="view-row">
         <figure class="card" style="margin:0">
           <h2>Vue de dessus</h2>
           <canvas id="viewTop" role="img" aria-label="Court vu de dessus, trajectoire et contacts"></canvas>
-          <p class="hint">Touche ton camp (en bas) pour placer le rebond, le camp d'en face pour placer la frappe.</p>
+          <div class="chips cams" id="place" role="group" aria-label="Ce que place un toucher dans ton camp">
+            <button class="chip on" type="button" data-place="bounce">Placer : rebond</button>
+            <button class="chip" type="button" data-place="me">Placer : toi</button>
+          </div>
+          <p class="hint">Touche ton camp (en bas) pour placer le rebond ou ta position, le camp d'en face pour placer la frappe.</p>
         </figure>
         <figure class="card" style="margin:0">
           <h2>Vue de côté</h2>

@@ -46,7 +46,7 @@ export function createRenderer(canvas, opts) {
 
   const court = buildCourt(track);
   scene.add(court.group);
-  const figures = createFigures(scene, track, opts.players || 4);
+  const figures = createFigures(scene, track, opts.players ?? 4);
   const ballView = createBallView(scene, track);
 
   const camera = new THREE.PerspectiveCamera(70, 1, 0.04, 90);

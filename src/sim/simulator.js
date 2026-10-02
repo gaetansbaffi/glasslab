@@ -12,6 +12,15 @@ const COL = { turf: '#2463b0', out: '#16304a', line: 'rgba(255,255,255,0.85)', g
 const state = Object.assign({ preset: PRESETS[0].id }, JSON.parse(JSON.stringify(PRESETS[0])));
 let result = null;
 let anim = { t: 0, slow: false, last: 0 };
+let placing = 'bounce'; // un toucher dans ton camp place : 'bounce' (le rebond) ou 'me' (toi)
+let camMode = 'player';
+let pathFor = null; // résultat dont la trajectoire 3D est construite
+
+/** Ta place sur le terrain : choisie, sinon un peu devant le rebond (là où l'on attend la balle). */
+function mePos() {
+  if (state.me) return state.me;
+  return { x: Math.max(1.2, Math.min(C.width - 1.2, state.to.x + (state.to.x > 5 ? -1.2 : 1.2))), y: Math.max(1.8, Math.min(8.5, state.to.y + 2.6)) };
+}
 
 /* ---------- Réglages ---------- */
 
@@ -62,7 +71,7 @@ for (const p of PRESETS) {
   b.dataset.id = p.id;
   b.textContent = p.name;
   b.addEventListener('click', () => {
-    Object.assign(state, JSON.parse(JSON.stringify(p)), { preset: p.id });
+    Object.assign(state, JSON.parse(JSON.stringify(p)), { preset: p.id, me: null });
     syncAll();
     run();
   });
@@ -221,6 +230,13 @@ function drawTop(t) {
   // Points visés et contacts
   marker(g, f.X(state.from.x), f.Y(state.from.y), '#ffffff', 'F');
   marker(g, f.X(state.to.x), f.Y(state.to.y), COL.ball, '');
+  const me = mePos();
+  g.fillStyle = '#ffffff';
+  g.beginPath();
+  g.arc(f.X(me.x), f.Y(me.y), 5, 0, 2 * Math.PI);
+  g.fill();
+  g.font = '700 12px system-ui, sans-serif';
+  g.fillText('Toi', f.X(me.x) + 8, f.Y(me.y) + 4);
   result.sim.contacts.forEach((c, i) => {
     if (c.type === 'cord') return;
     badge(g, f.X(c.pos.x), f.Y(c.pos.y), i + 1, c.t <= t);
@@ -369,12 +385,88 @@ $('viewTop').addEventListener('pointerdown', (ev) => {
   const f = topFrame(r.width, r.height);
   const p = f.inv(ev.clientX - r.left, ev.clientY - r.top);
   const x = Math.max(0.3, Math.min(C.width - 0.3, p.x));
-  if (p.y < C.depth) state.to = { x, y: Math.max(0.2, Math.min(C.depth - 0.2, p.y)) };
+  if (p.y < C.depth && placing === 'me') state.me = { x, y: Math.max(0.3, Math.min(C.depth - 0.5, p.y)) };
+  else if (p.y < C.depth) state.to = { x, y: Math.max(0.2, Math.min(C.depth - 0.2, p.y)) };
   else state.from = { x, y: Math.max(C.depth + 0.5, Math.min(C.length - 0.3, p.y)), z: state.from.z };
   state.preset = null;
   syncAll();
   run();
 });
+
+for (const b of document.querySelectorAll('#place .chip')) {
+  b.addEventListener('click', () => {
+    placing = b.dataset.place;
+    for (const o of document.querySelectorAll('#place .chip')) o.classList.toggle('on', o === b);
+  });
+}
+for (const b of document.querySelectorAll('#cams .chip')) {
+  b.addEventListener('click', () => {
+    camMode = b.dataset.cam;
+    for (const o of document.querySelectorAll('#cams .chip')) o.classList.toggle('on', o === b);
+  });
+}
+
+/* ---------- Vue 3D : le court du jeu, vu depuis la place choisie ---------- */
+
+let r3 = null;
+const look = { x: 5, y: 15, z: 1 }; // point regardé (vue « toi ») : suit la balle en douceur
+const cam = { eye: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 }, vFov: 60 };
+const view = { ball: null, reach: null, pathT: null, best: null, mine: null, landing: null };
+import('../view/renderer.js')
+  .then(({ createRenderer, webglAvailable }) => {
+    if (!webglAvailable()) throw new Error('WebGL');
+    r3 = createRenderer($('view3d'), { antialias: true, players: 0 });
+  })
+  .catch(() => {
+    $('card3d').hidden = true; // sans WebGL : vues de dessus et de côté seulement
+  });
+
+function draw3d(t, dt) {
+  if (!r3 || !result) return;
+  const el = $('view3d');
+  const w = el.clientWidth;
+  const h = el.clientHeight;
+  r3.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  r3.resize(w, h);
+  if (pathFor !== result) {
+    r3.ball.setPath(result.samples);
+    pathFor = result;
+  }
+  const b = P.stateAt(result.sim, t);
+  const me = mePos();
+  const k = 1 - Math.exp(-dt / 0.12);
+  if (t === 0) Object.assign(look, { x: state.from.x, y: state.from.y, z: state.from.z });
+  else {
+    look.x += (b.x - look.x) * k;
+    look.y += (b.y - look.y) * k;
+    look.z += (b.z - look.z) * k;
+  }
+  if (camMode === 'player') {
+    Object.assign(cam.eye, { x: me.x, y: me.y, z: 1.65 });
+    Object.assign(cam.target, look);
+    cam.vFov = 62;
+  } else if (camMode === 'behind') {
+    Object.assign(cam.eye, { x: 5, y: -2.4, z: 2.6 });
+    Object.assign(cam.target, { x: 5, y: 5, z: 0.9 });
+    cam.vFov = 58;
+  } else if (camMode === 'side') {
+    Object.assign(cam.eye, { x: 13.5, y: 6.5, z: 2.6 });
+    Object.assign(cam.target, { x: 5, y: 6.5, z: 0.9 });
+    cam.vFov = 58;
+  } else {
+    Object.assign(cam.eye, { x: state.from.x, y: Math.min(C.length + 1, state.from.y + 1.2), z: 1.8 });
+    Object.assign(cam.target, { x: state.to.x, y: state.to.y, z: 0.6 });
+    cam.vFov = 58;
+  }
+  // Regarder exactement vers le bas (balle à la verticale) n'a pas de sens pour la caméra : on décale
+  if (Math.hypot(cam.target.x - cam.eye.x, cam.target.y - cam.eye.y) < 0.05) cam.target.y += 0.05;
+  r3.setCamera(cam, null);
+  view.ball = b;
+  view.reach = camMode === 'player' ? null : me;
+  view.pathT = t;
+  r3.ball.update(view, dt);
+  r3.render();
+}
 
 /* ---------- Animation ---------- */
 
@@ -388,6 +480,7 @@ function loop(now) {
   const t = result ? Math.min(anim.t, result.sim.endT) : 0;
   drawTop(t);
   drawSide(t);
+  draw3d(t, dt * (anim.slow ? 0.25 : 1));
   requestAnimationFrame(loop);
 }
 
