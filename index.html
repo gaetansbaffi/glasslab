@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1219">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Glass Lab — partie de padel en double, en 1re personne : entraîne ta lecture des vitres et ton choix de coup.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Glass Lab">
+  <title>Glass Lab</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js : copie locale versionnée (vendor/), sans bundler -->
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three@0.170.0/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game" aria-label="Court de padel en 3D, vue à la première personne, dans le corps du joueur"></canvas>
+
+  <!-- Interface de jeu : le score, Pause, le joystick, Frappe et le toast -->
+  <div id="ui" class="ui" hidden>
+    <div id="touch" class="touch"></div>
+    <!-- Tableau de score : sets terminés, jeux du set en cours, points (● = équipe au service) -->
+    <div id="score" class="score" aria-label="Score">
+      <div id="scoreUs" class="score-row"><span class="srv" aria-hidden="true"></span><b>Vous</b><span class="hist"></span><span class="games"></span><span class="pts"></span></div>
+      <div id="scoreThem" class="score-row"><span class="srv" aria-hidden="true"></span><b>Eux</b><span class="hist"></span><span class="games"></span><span class="pts"></span></div>
+      <div id="scoreNote" class="score-note" hidden></div>
+    </div>
+    <!-- Annonce de l'arbitre après chaque point (« 30-15 », « Jeu · vous »…) et sa raison -->
+    <div id="banner" class="banner" hidden role="status" aria-live="polite"><b id="bannerText"></b><small id="bannerSub"></small></div>
+    <div id="servePrompt" class="serve-prompt" hidden>À toi de servir : appuie sur Frappe</div>
+    <button id="pauseBtn" class="icon-btn pause-btn" aria-label="Pause (Échap)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+    </button>
+    <button id="strikeBtn" class="strike" aria-label="Frappe (Espace)">FRAPPE</button>
+    <div id="toast" class="toast" hidden role="status" aria-live="polite">
+      <span class="toast-icon" id="toastIcon" aria-hidden="true"></span>
+      <span class="toast-text"><b id="toastTitle"></b><small id="toastSub"></small></span>
+      <button id="toastDetail" class="toast-btn" hidden>Détail</button>
+    </div>
+    <div id="guide" class="guide" hidden role="note"></div>
+    <div id="hint" class="hint" hidden>Astuce : tourne ton téléphone en paysage pour mieux voir le court.</div>
+    <div id="level" class="level" hidden role="status" aria-live="polite"></div>
+    <div id="spinTag" class="spin-tag" hidden aria-live="polite"></div>
+    <canvas id="ballMap" class="ball-map" aria-hidden="true"></canvas>
+    <div id="call" class="call" hidden aria-live="polite"></div>
+  </div>
+  <div id="fade" class="fade" aria-hidden="true"></div>
+  <div id="fps" class="fps" hidden></div>
+
+  <!-- Accueil -->
+  <section id="home" class="screen home" hidden aria-labelledby="homeTitle">
+    <h1 id="homeTitle" class="title">Glass<span>Lab</span></h1>
+    <p class="tagline">Partie en double · lis les vitres, choisis ton coup</p>
+    <button id="playBtn" class="btn-play">Jouer</button>
+    <p id="resumeInfo" class="resume-info" hidden></p>
+    <div class="formats" role="group" aria-label="Format du match">
+      <span class="formats-lbl" id="formatsLbl">Match</span>
+      <button class="fmt-btn" data-format="1set" aria-pressed="true">1 set</button>
+      <button class="fmt-btn" data-format="3sets" aria-pressed="false">2 sets gagnants</button>
+    </div>
+    <button id="newMatchBtn" class="btn-link" hidden>Nouveau match</button>
+    <div class="home-icons">
+      <button class="icon-btn labeled" data-open="stats" aria-label="Statistiques">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="7" width="4" height="13" rx="1"/><rect x="16" y="3" width="4" height="17" rx="1"/></svg><span>Stats</span>
+      </button>
+      <button class="icon-btn labeled" data-open="settings" aria-label="Réglages">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm9 4.6v-2.2l-2.4-.6a7 7 0 0 0-.7-1.6l1.3-2.1-1.6-1.6-2.1 1.3a7 7 0 0 0-1.6-.7L13.3 3h-2.2l-.6 2.4a7 7 0 0 0-1.6.7L6.8 4.8 5.2 6.4l1.3 2.1a7 7 0 0 0-.7 1.6L3 10.9v2.2l2.4.6c.2.6.4 1.1.7 1.6l-1.3 2.1 1.6 1.6 2.1-1.3c.5.3 1 .5 1.6.7l.6 2.4h2.2l.6-2.4c.6-.2 1.1-.4 1.6-.7l2.1 1.3 1.6-1.6-1.3-2.1c.3-.5.5-1 .7-1.6l2.4-.6Z"/></svg><span>Réglages</span>
+      </button>
+      <a class="icon-btn labeled" href="simulateur.html" aria-label="Simulateur de vitres">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18v-2H3v2Zm2-4 4.5-9 3.5 5 2.5-3L19 16H5Zm11-12a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg><span>Simulateur</span>
+      </a>
+      <button class="icon-btn labeled fs-btn" aria-label="Plein écran (F)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3H4Zm11-5h5v5h-2V6h-3V4ZM4 15h2v3h3v2H4v-5Zm14 3v-3h2v5h-5v-2h3Z"/></svg><span>Plein écran</span>
+      </button>
+    </div>
+    <p id="buildInfo" class="build-info" hidden></p>
+  </section>
+
+  <!-- Pause -->
+  <section id="pause" class="screen menu" hidden aria-labelledby="pauseTitle">
+    <div class="panel">
+      <h2 id="pauseTitle">Pause</h2>
+      <div class="summary" id="summary"></div>
+      <button id="resumeBtn" class="btn-primary">Reprendre</button>
+      <div class="menu-row">
+        <button class="btn" data-open="settings">Réglages</button>
+        <button class="btn" data-open="stats">Stats</button>
+        <button class="btn" id="lastDetailBtn">Revoir la dernière erreur</button>
+        <button class="btn fs-btn">Plein écran</button>
+        <button class="btn danger" id="quitBtn">Quitter</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fin de match -->
+  <section id="matchEnd" class="screen menu" hidden aria-labelledby="matchEndTitle">
+    <div class="panel">
+      <h2 id="matchEndTitle" class="end-title"></h2>
+      <p id="matchEndScore" class="end-score"></p>
+      <div class="summary" id="matchEndSummary"></div>
+      <button id="newMatchEndBtn" class="btn-primary">Nouveau match</button>
+      <div class="menu-row">
+        <button class="btn" data-open="stats">Stats</button>
+        <button class="btn" id="homeEndBtn">Accueil</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Réglages -->
+  <section id="settings" class="screen menu" hidden aria-labelledby="settingsTitle">
+    <div class="panel scroll">
+      <h2 id="settingsTitle">Réglages</h2>
+      <div id="settingsList" class="settings-list"></div>
+      <h3>Données</h3>
+      <p class="small">Vue, champ de vision, vitesse et aides sont réglés par le jeu ; la difficulté s’adapte à toi.</p>
+      <div class="menu-row">
+        <button class="btn" id="exportBtn">Exporter (JSON)</button>
+        <label class="btn" for="importFile">Importer…</label>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <button class="btn danger" id="resetBtn">Réinitialiser</button>
+      </div>
+      <p class="small" id="dataMsg" role="status"></p>
+      <button class="btn-primary back-btn">Retour</button>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section id="stats" class="screen menu" hidden aria-labelledby="statsTitle">
+    <div class="panel scroll">
+      <h2 id="statsTitle">Stats</h2>
+      <div id="statsBody"></div>
+      <button class="btn-primary back-btn">Retour</button>
+    </div>
+  </section>
+
+  <!-- Détail d'une balle : replay au ralenti (optionnel, ouvert à la demande) -->
+  <section id="detail" class="detail" hidden aria-labelledby="detailTitle">
+    <div class="cam-sel" role="group" aria-label="Vue du replay">
+      <button class="cam-btn" data-cam="fp">1re pers.</button>
+      <button class="cam-btn" data-cam="top">Dessus</button>
+      <button class="cam-btn" data-cam="side">Côté</button>
+    </div>
+    <div class="detail-sheet">
+      <h2 id="detailTitle" class="detail-title"></h2>
+      <ul id="detailLines" class="detail-lines"></ul>
+      <p id="detailRule" class="rule"></p>
+      <div class="menu-row">
+        <button class="btn" id="replayAgainBtn">Rejouer</button>
+        <button class="btn-primary" id="detailResumeBtn">Reprendre</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="fatal" class="screen fatal" hidden role="alert">
+    <h1>Glass Lab</h1>
+    <p id="fatalText">Ce jeu nécessite WebGL, indisponible sur cet appareil ou ce navigateur.</p>
+    <p class="small">Essaie un navigateur récent (Chrome, Safari, Firefox, Edge) et vérifie que l’accélération graphique est activée.</p>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+  <noscript><p class="screen fatal">Glass Lab nécessite JavaScript.</p></noscript>
+</body>
+</html>
