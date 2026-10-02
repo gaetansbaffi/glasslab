@@ -3,7 +3,8 @@
  */
 import P from '../src/core/physics.js';
 import G from '../src/core/geometry.js';
-import R from '../src/core/rally.js';
+import PL from '../src/core/players.js';
+import CFG from '../src/core/config.js';
 
 export const SEEDS = Array.from({ length: 30 }, (_, i) => 1000 + i * 7919);
 export const START = { x: 5, y: 3 };
@@ -25,32 +26,19 @@ export function randomLaunches(n, seed) {
   return out;
 }
 
-/** Balle de test : lancée depuis le filet vers un point de rebond, en T secondes. */
-export function makeShot(from, to, T) {
-  const init = P.launchToBounce(from, to, T);
-  const sim = P.simulate(init, { maxFloorBounces: 2 });
-  return { init, sim, tStart: -G.preNetDuration(init, sim.params.g), endT: sim.endT, family: 'test' };
+/**
+ * Balle de test : au plan du filet (from), elle rebondit en `to` après T secondes (air compris, effet
+ * facultatif : top = lift > 0 / coupé < 0, rad/s) ; avant le filet, la trajectoire est prolongée jusqu'à la
+ * raquette adverse (instants négatifs).
+ */
+export function makeShot(from, to, T, top) {
+  const init = P.launchToBounce(from, to, T, undefined, top ? P.spinVector(to.x - from.x, to.y - from.y, top, 0) : undefined);
+  const sim = P.extendBack(P.simulate(init, { maxFloorBounces: 2 }), G.preNetDuration(init, P.DEFAULT_PARAMS.g));
+  return { init, sim, tStart: sim.segments[0].t0, endT: sim.endT, family: 'test' };
 }
 
-/** Joueur automatique : va au meilleur point de frappe et appuie au bon moment. */
-export function botInput(st, dt) {
-  if (st.phase !== 'incoming' || st.pending) return {};
-  const best = st.shot.best.best;
-  const dx = best.pos.x - st.player.x;
-  const dy = best.pos.y - st.player.y;
-  const d = Math.hypot(dx, dy);
-  const move = d > 0.02 ? { x: dx / d, y: dy / d } : { x: 0, y: 0 };
-  return { move, strike: st.t + dt >= best.t && st.t < best.t + dt };
-}
-
-export function runRally(rally, seconds, inputFn, dt) {
-  dt = dt || 1 / 60;
-  const events = [];
-  let st = rally;
-  for (let t = 0; t < seconds; t += dt) {
-    const inp = inputFn(st, dt);
-    st = R.step(st, dt, inp);
-    for (const e of st.events) events.push(e);
-  }
-  return { st, events };
+/** Joystick qui amène le joueur en `to` et l'y arrête (il a de l'inertie : accélération et freinage). */
+export function steerTo(player, to, dt) {
+  const v = PL.arriveVelocity(player, to, CFG.player, dt);
+  return { x: v.x / CFG.player.speed, y: v.y / CFG.player.speed };
 }

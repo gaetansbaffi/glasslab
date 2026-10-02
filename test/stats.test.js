@@ -4,7 +4,9 @@
 import { test, assert, near, section } from './harness.js';
 import CFG from '../src/core/config.js';
 import Stats from '../src/core/stats.js';
-import R from '../src/core/rally.js';
+import SC from '../src/core/score.js';
+import M from '../src/core/match.js';
+import PL from '../src/core/players.js';
 
 const DEFAULTS = { speed: 1, auto: false, showPath: false, showBest: true, sound: true, lefty: false };
 
@@ -58,9 +60,26 @@ test('répétition espacée et difficulté adaptative (80 % / 50 %)', () => {
     changed += r.levelChange;
   }
   assert(st.level === 2 && changed === 1, 'niveau ' + st.level);
-  // Les poids et le niveau sont bien utilisés par l'échange
-  const rally = R.createRally({ seed: 5, weights: { direct: 0, A: 0, B: 0, C: 1, D: 0 }, level: 4 });
-  assert(rally.shot.family === 'C' && rally.shot.level === 4);
+  // Les poids et le niveau sont bien utilisés par la partie : balles des adversaires vers toi
+  const DT = 1 / 120;
+  let m = M.createMatch({ seed: 5, weights: { direct: 0, A: 0, B: 0, C: 1, D: 0 }, level: 4 });
+  const mine = [];
+  for (let i = 0; i < 240 / DT && mine.length < 12; i++) {
+    const u = M.userShot(m);
+    let input = {};
+    if (m.phase === 'serve' && m.serve.by === 0) input = { strike: m.serve.hitAt == null };
+    else if (u && !u.pending) {
+      const best = u.shot.best.best;
+      const v = PL.arriveVelocity(m.players[0], best.pos, CFG.player, DT);
+      input = { move: { x: v.x / CFG.player.speed, y: v.y / CFG.player.speed }, strike: u.t + DT >= best.t && u.t < best.t + DT };
+    }
+    const prev = m.flight;
+    m = M.step(m, DT, input);
+    if (m.flight && m.flight !== prev && m.flight.team === 1 && !m.flight.serve && m.recv && m.recv.player === 0) mine.push(m.flight);
+  }
+  assert(mine.length >= 8 && mine.every((f) => f.level === 4), 'niveau 4 : ' + mine.map((f) => f.level).join(','));
+  const c = mine.filter((f) => f.shot.family === 'C').length;
+  assert(c >= mine.length * 0.5, `famille C demandée : ${c} / ${mine.length}`);
 });
 
 test('migration : version 1 (application multi-modes) → version 2, données inutiles abandonnées', () => {
@@ -81,6 +100,27 @@ test('migration : version 1 (application multi-modes) → version 2, données in
   assert(s.settings.showPath === false, 'réglage de mauvais type ignoré');
   assert(s.settings.sound === true && s.settings.lefty === false, 'nouveaux réglages par défaut');
   assert(!('attempts' in s) && !('reveal' in s.settings) && !('view' in s.settings), 'données des modes retirés abandonnées');
+});
+
+test('migration : version 2 (duel) → version 3, réglages supprimés abandonnés, bilan des parties initialisé', () => {
+  const v2 = {
+    version: 2,
+    level: 3,
+    levelSince: 1,
+    bestStreak: 9,
+    guideDone: true,
+    settings: { speed: 0.5, camera: 'shoulder', fov: 110, sound: false, lefty: true, vibration: false },
+    balls: [ball({ ts: 7 }), ball({ ts: 8, family: 'A' }), { cassé: true }],
+  };
+  const r = Stats.migrate(v2, { sound: true, lefty: false });
+  assert(r.from === 2 && r.state.version === 3 && Stats.SCHEMA_VERSION === 3);
+  const s = r.state;
+  assert(s.level === 3 && s.bestStreak === 9 && s.guideDone && s.balls.length === 2, 'progression conservée');
+  assert(JSON.stringify(s.settings) === JSON.stringify({ sound: false, lefty: true }), 'réglages : ' + JSON.stringify(s.settings));
+  assert(JSON.stringify(s.record) === JSON.stringify(Stats.emptyRecord()), 'bilan vierge');
+  // Bilan d'une version 3 relu, valeurs invalides remises à zéro
+  const v3 = Stats.migrate({ version: 3, record: { points: [12, 'x'], games: [3, -2], sets: 'non' } }, { sound: true }).state;
+  assert(JSON.stringify(v3.record) === JSON.stringify({ points: [12, 0], games: [3, 0], sets: [0, 0], matches: [0, 0] }), JSON.stringify(v3.record));
 });
 
 test('migration : données corrompues ou inconnues → état vierge, sans exception', () => {
@@ -107,4 +147,27 @@ test('export / import JSON : aller-retour, fichiers étrangers refusés', () => 
     }
     assert(threw, 'refusé : ' + bad);
   }
+});
+
+test('double : part des frappes jouées aligné avec le partenaire', () => {
+  const d = Stats.doublesStats([ball({ aligned: true }), ball({ aligned: false }), ball({ aligned: true }), ball({})]);
+  assert(d.n === 3 && Math.abs(d.aligned - 2 / 3) < 1e-12, JSON.stringify(d));
+  assert(Stats.doublesStats([]).aligned === null);
+});
+
+test('match en cours et format : sauvegardés, relus, refusés s’ils sont invalides ou terminés', () => {
+  const st = Object.assign(Stats.createState(DEFAULTS), { format: '3sets' });
+  let sc = SC.createScore({ bestOf: 3, superTiebreak: true });
+  for (let i = 0; i < 9; i++) sc = SC.pointWon(sc, i % 3 ? 0 : 1).score;
+  st.current = { format: '3sets', score: sc, pointsWon: [6, 3], at: 1700000000000 };
+  const back = Stats.importState(JSON.stringify(st), DEFAULTS);
+  assert(back.format === '3sets' && back.current && back.current.format === '3sets', 'format et match relus');
+  assert(JSON.stringify(back.current.score) === JSON.stringify(sc) && back.current.pointsWon.join('-') === '6-3', 'score identique');
+  // Match terminé, format inconnu ou score illisible : pas de reprise
+  let done = SC.createScore({ bestOf: 1 });
+  for (let i = 0; i < 24; i++) done = SC.pointWon(done, 0).score;
+  assert(done.winner === 0 && Stats.cleanCurrent({ format: '1set', score: done }) === null, 'match terminé');
+  assert(Stats.cleanCurrent({ format: '5sets', score: sc }) === null && Stats.cleanCurrent({ format: '1set', score: { points: 'x' } }) === null, 'invalide');
+  const old = Stats.migrate({ version: 3, balls: [] }, DEFAULTS).state;
+  assert(old.format === '1set' && old.current === null && old.record.matches.join('-') === '0-0', 'ancienne sauvegarde : valeurs par défaut');
 });

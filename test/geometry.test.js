@@ -5,7 +5,8 @@ import { test, assert, near, section } from './harness.js';
 import P from '../src/core/physics.js';
 import G from '../src/core/geometry.js';
 import SG from '../src/core/shotgen.js';
-import { SEEDS, START } from './helpers.js';
+import Q from '../src/core/quality.js';
+import { SEEDS } from './helpers.js';
 
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -60,31 +61,26 @@ test('angles de regard : aller-retour et lissage par le plus court chemin', () =
   near(G.wrapAngle(0.5 - 4 * Math.PI), 0.5, 1e-12);
 });
 
-test('caméra à hauteur d’yeux derrière le joueur, jamais derrière la vitre', () => {
-  const e = G.eyePosition({ x: 5, y: 3 }, 0);
-  near(e.z, 1.7, 0);
-  near(e.y, 3 - 0.35, 1e-12);
-  const glass = G.eyePosition({ x: 5, y: 0.3 }, 0, 1.7, 1);
-  assert(glass.y >= 0.15, 'reste devant la vitre de fond');
-});
-
-test('balle côté adverse : la remontée dans le temps reste sur la trajectoire et au-dessus du sol', () => {
-  for (const f of SG.FAMILY_IDS) {
-    for (const seed of SEEDS.slice(0, 15)) {
-      const sc = SG.generateShot({ family: f, level: 3, seed, player: START });
-      const g = P.DEFAULT_PARAMS.g;
-      const tau = G.preNetDuration(sc.init, g);
-      assert(tau > 0, 'durée positive');
-      const start = G.ballistic(sc.init, -tau, g);
-      assert(start.y > 10 && start.y <= 16.5 + 1e-9, 'départ côté adverse : y=' + start.y);
-      assert(start.z >= 0.4 - 1e-9 && start.z <= 3.2 + 1e-9, 'hauteur de frappe plausible : z=' + start.z);
-      // Revenir au filet redonne exactement l'état initial
-      const back = G.ballistic(start, tau, g);
-      near(back.x, sc.init.x, 1e-9);
-      near(back.z, sc.init.z, 1e-9);
-      near(back.vz, sc.init.vz, 1e-9);
+test('balle côté adverse : avant le filet, elle part de la raquette adverse et reste au-dessus du sol', () => {
+  const r = P.DEFAULT_PARAMS.radius;
+  let checked = 0;
+  for (const family of SG.FAMILY_IDS) {
+    for (const seed of SEEDS.slice(0, 8)) {
+      const origin = { x: 2 + (seed % 6), y: 17.5, z: 1.0 };
+      const f = SG.generateTo({ origin, team: 1, style: 'drive', family, level: 3, seed, attempts: 300 });
+      if (!f) continue;
+      const shot = f.shot; // repère du receveur (équipe du bas) = repère du court
+      const hit = Q.ballStateAt(shot, shot.tStart);
+      near(Math.hypot(hit.x - origin.x, hit.y - origin.y, hit.z - origin.z), 0, 1e-9, 'départ à la raquette');
+      for (let t = shot.tStart; t < 0; t += 0.02) {
+        const b = Q.ballStateAt(shot, t);
+        assert(b.z >= r - 1e-9 && b.y > 10 - 1e-9 && b.y < 20, `côté adverse, au-dessus du sol : y=${b.y.toFixed(2)} z=${b.z.toFixed(2)}`);
+      }
+      near(Q.ballStateAt(shot, 0).y, 10, 1e-6, 'au filet à t = 0');
+      checked++;
     }
   }
+  assert(checked >= 25, 'balles vérifiées : ' + checked);
 });
 
 test('joystick : zone morte, normalisation, courbe de réponse, sensibilité', () => {
@@ -127,16 +123,6 @@ test('clavier : ZQSD (AZERTY) = WASD (QWERTY) = flèches, diagonale normalisée'
   assert(none.x === 0 && none.y === 0, 'touches opposées');
 });
 
-test('déplacement relatif au regard', () => {
-  const f = G.cameraRelativeMove({ x: 0, y: 1 }, 0);
-  near(f.x, 0, 1e-12);
-  near(f.y, 1, 1e-12, 'regard vers le filet : avancer = vers le filet');
-  const r = G.cameraRelativeMove({ x: 1, y: 0 }, 0);
-  near(r.x, 1, 1e-12, 'pas chassé à droite');
-  const b = G.cameraRelativeMove({ x: 0, y: 1 }, Math.PI);
-  near(b.y, -1, 1e-12, 'regard vers la vitre : avancer = vers la vitre');
-});
-
 test('caméra : suit la cible en douceur, amplitude et vitesse bornées, horizon stable', () => {
   const opts = { halfLife: 0.15, maxYaw: 2.4, pitchMin: -0.5, pitchMax: 0.6, maxSpeed: 3 };
   let look = { yaw: 0, pitch: 0 };
@@ -171,49 +157,84 @@ test('caméra calme : zone morte en lacet, suivi partiel de la hauteur', () => {
   near(G.cameraTarget(look, { yaw: 0, pitch: 0.45 }, opts).pitch, 0.15, 1e-12);
 });
 
-test('position de caméra : 1re personne aux yeux, vue épaule derrière et au-dessus, toujours dans le court', () => {
-  const p = { x: 5, y: 3 };
-  const look = { yaw: 0, pitch: -0.1 };
-  const fp = G.cameraRig(p, look, 'fp');
-  near(fp.pz, 1.7, 1e-12);
-  near(fp.py, 3 - 0.35, 1e-12);
-  const sh = G.cameraRig(p, look, 'shoulder');
-  assert(sh.py < fp.py - 1 && sh.pz > 2, 'épaule : en arrière et au-dessus');
-  // La visée suit le regard
-  const d = { x: sh.tx - sh.px, y: sh.ty - sh.py, z: sh.tz - sh.pz };
-  const a = G.lookAngles({ x: 0, y: 0, z: 0 }, d);
-  near(a.yaw, 0, 1e-12);
-  near(a.pitch, -0.1, 1e-12);
-  // Joueur collé à la vitre de fond ou dans un coin : la caméra reste dans le court
-  const rng = P.mulberry32(8);
-  for (let i = 0; i < 300; i++) {
-    const c = G.cameraRig({ x: 0.3 + rng() * 9.4, y: 0.3 + rng() * 9.2 }, { yaw: (rng() - 0.5) * 6, pitch: -0.2 }, rng() < 0.5 ? 'fp' : 'shoulder');
-    assert(c.px >= 0.2 && c.px <= 9.8 && c.py >= 0.2 && c.py <= 19.8, 'caméra hors du court');
-  }
+test('champ de vision d’une caméra : coordonnées caméra et visibilité d’un point', () => {
+  const eye = { x: 5, y: 3, z: 1.65 };
+  // Point droit devant : centré, à la bonne profondeur
+  const c = G.viewCoords(eye, 0, 0, { x: 5, y: 8, z: 1.65 });
+  near(c.x, 0, 1e-12);
+  near(c.y, 0, 1e-12);
+  near(c.z, 5, 1e-12);
+  // À droite et en haut de l'image
+  const r = G.viewCoords(eye, 0, 0, { x: 6, y: 8, z: 2.65 });
+  assert(r.x > 0 && r.y > 0);
+  // Regard vers la droite (yaw = 90°) : le point de droite est devant
+  near(G.viewCoords(eye, Math.PI / 2, 0, { x: 9, y: 3, z: 1.65 }).z, 4, 1e-12);
+  // Regard plongeant : un point au sol devant est au centre
+  const pitch = -Math.atan2(1.65, 2);
+  const g = G.viewCoords(eye, 0, pitch, { x: 5, y: 5, z: 0 });
+  near(g.y, 0, 1e-12);
+  near(g.x, 0, 1e-12);
+  // Visibilité : 108° × 65° ; derrière la caméra = invisible
+  assert(G.inView(eye, 0, 0, { x: 5, y: 8, z: 1.65 }, 108, 65));
+  assert(!G.inView(eye, 0, 0, { x: 5, y: 1, z: 1.65 }, 108, 65), 'derrière');
+  assert(G.inView(eye, 0, 0, { x: 8.5, y: 6, z: 1.65 }, 108, 65), 'à 49° sur le côté');
+  assert(!G.inView(eye, 0, 0, { x: 8.5, y: 6, z: 1.65 }, 90, 65), 'hors d’un champ de 90°');
+  near(G.horizontalFov(G.verticalFov(108, 2.17, 10, 170), 2.17), 108, 1e-9, 'champs horizontal ↔ vertical');
 });
 
-test('raquette : tête à distance de bras du côté de la balle, geste de l’arrière vers l’avant', () => {
-  const p = { x: 5, y: 3 };
-  for (const yaw of [0, 1, Math.PI, -2]) {
-    for (const side of [1, -1]) {
-      const r = G.racketPose(p, yaw, side, 0);
-      near(Math.hypot(r.head.x - p.x, r.head.y - p.y), Math.hypot(0.65, 0.2), 1e-9, 'distance de bras');
-      // Côté : produit vectoriel regard × (tête − joueur) du signe attendu
-      const lateral = (r.head.x - p.x) * Math.cos(yaw) - (r.head.y - p.y) * Math.sin(yaw);
-      assert(Math.sign(lateral) === side, 'mauvais côté');
-      assert(r.head.z > 0.8 && r.head.z < 1.3 && r.shoulder.z > r.hand.z, 'hauteurs plausibles');
-    }
-  }
-  // Pendant la frappe, la tête passe de derrière à devant le joueur (regard vers le filet)
-  const back = G.racketPose(p, 0, 1, 0.01).head.y - p.y;
-  const front = G.racketPose(p, 0, 1, 1).head.y - p.y;
-  assert(back < 0 && front > 0.5, `geste : ${back} → ${front}`);
+test('joystick par rapport au regard : haut = devant toi, direction figée pendant la course', () => {
+  const o = { lockOn: 0.45, lockOff: 0.3 };
+  // Regard vers le filet : identique au repère du court
+  let f = { ref: null };
+  let v = G.viewRelativeMove(f, { x: 0.2, y: 0.3 }, 0, o);
+  near(v.x, 0.2, 1e-12);
+  near(v.y, 0.3, 1e-12);
+  // Regard vers la paroi de droite (+x) : haut = vers +x, droite = vers le fond (−y)
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 0, y: 1 }, Math.PI / 2, o);
+  near(v.x, 1, 1e-12);
+  near(v.y, 0, 1e-12);
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 1, y: 0 }, Math.PI / 2, o);
+  near(v.x, 0, 1e-12);
+  near(v.y, -1, 1e-12);
+  // Regard vers ta vitre de fond : haut = vers la vitre
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 0, y: 1 }, Math.PI, o);
+  near(v.y, -1, 1e-12);
+  // Course engagée regard au filet, puis la caméra tourne de 100° : la course ne dévie pas
+  f = { ref: null };
+  G.viewRelativeMove(f, { x: 0, y: 1 }, 0, o);
+  v = G.viewRelativeMove(f, { x: 0, y: 1 }, (100 * Math.PI) / 180, o);
+  near(v.x, 0, 1e-12, 'direction figée');
+  near(v.y, 1, 1e-12, 'direction figée');
+  // Pouce presque au centre : la référence suit de nouveau le regard
+  v = G.viewRelativeMove(f, { x: 0, y: 0.2 }, Math.PI / 2, o);
+  assert(f.ref === null && Math.abs(v.x - 0.2) < 1e-12, 'référence libérée');
+  // Norme conservée
+  f = { ref: null };
+  v = G.viewRelativeMove(f, { x: 0.6, y: -0.8 }, 2.1, o);
+  near(Math.hypot(v.x, v.y), 1, 1e-12);
 });
 
-test('coup droit / revers : côté de la balle avec hystérésis', () => {
-  const p = { x: 5, y: 3 };
-  assert(G.pickSide(1, p, 0, { x: 4, y: 5 }) === -1, 'balle à gauche → revers');
-  assert(G.pickSide(-1, p, 0, { x: 6, y: 5 }) === 1, 'balle à droite → coup droit');
-  assert(G.pickSide(1, p, 0, { x: 4.9, y: 5 }) === 1, 'balle presque en face : on garde le côté');
-  assert(G.pickSide(-1, p, Math.PI, { x: 4, y: 1 }) === 1, 'regard vers la vitre : gauche et droite inversées');
+test('mini-carte : repère du joystick (inverse du déplacement par rapport au regard)', () => {
+  const o = { lockOn: 0.45, lockOff: 0.3 };
+  const rng = P.mulberry32(21);
+  for (let i = 0; i < 200; i++) {
+    const yaw = (rng() * 2 - 1) * Math.PI;
+    const stick = { x: rng() * 1.2 - 0.6, y: rng() * 1.2 - 0.6 };
+    const move = G.viewRelativeMove({ ref: null }, stick, yaw, o);
+    const back = G.toStickFrame(move.x, move.y, yaw);
+    near(back.x, stick.x, 1e-12);
+    near(back.y, stick.y, 1e-12);
+  }
+  // Regard vers la paroi de droite : le filet (+y) est à gauche sur la carte, la paroi droite en haut
+  const net = G.toStickFrame(0, 1, Math.PI / 2);
+  near(net.x, -1, 1e-12);
+  near(net.y, 0, 1e-12);
+  // Course engagée : la carte garde l'orientation figée du joystick
+  const f = { ref: null };
+  G.viewRelativeMove(f, { x: 0, y: 1 }, 0.3, o);
+  near(G.moveReference(f, 1.4), 0.3, 1e-12);
+  near(G.moveReference({ ref: null }, 1.4), 1.4, 1e-12);
 });

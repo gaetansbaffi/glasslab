@@ -1,227 +1,171 @@
-# Glass Lab — état des lieux et brief de reconstruction
+# Glass Lab — état des lieux après reconstruction
 
-> Document destiné à relancer la création du jeu avec un modèle plus puissant.
-> État au 1ᵉʳ octobre 2026, branche `claude/confident-curie-9n5fu8-jeu` (PR #4).
-> Statut des informations : **[fait]** vérifié dans le code ou par les tests · **[retour]** ressenti du joueur · **[reco]** recommandation.
+> État au 1ᵉʳ octobre 2026 (effets, système de points, caméra calme, balles hautes, vraie physique ajoutés), dépôt `gaetansbaffi/glasslab`, branche `claude/admiring-dirac-jzm3bk`.
+> Le brief de reconstruction précédent (état du dépôt `glassmaster`, branche `claude/confident-curie-9n5fu8-jeu`) est dans l'historique git : commit `03ca104`.
+> Statut des informations : **[fait]** vérifié dans le code ou par les tests · **[à vérifier]** non vérifiable sans un vrai téléphone ou un joueur · **[reco]** recommandation.
 
 ---
 
 ## 1. En une phrase
 
-Glass Lab est un **jeu de padel en 3D** pour entraîner la **lecture des vitres** et le **choix du coup** : un échange infini contre un adversaire virtuel. Le joueur se place, appuie sur **Frappe** au bon moment, et le jeu compare son coup au meilleur coup possible.
+Glass Lab est devenu un **match de padel en double, vécu en 1re personne dans le corps du joueur** : toi et ton partenaire IA contre deux adversaires IA, en 1 set ou en 2 sets gagnants, avec service, vrai score du padel, effets de balle et positions d'attaque et de défense. Ta balle garde la logique d'entraînement d'origine : tu te places, tu appuies sur **Frappe**, le jeu compare ton coup au meilleur coup possible.
 
-## 2. Objectif de la reconstruction
+## 2. Ce qui a été fait, étape par étape [fait]
 
-1. **Une vraie partie de padel en double : 4 joueurs sur le terrain**, avec des déplacements et des vitesses de jeu réalistes [retour] (voir §7).
-2. **Une vraie vue première personne, « comme dans un corps humain »** [retour]. Aujourd'hui, la meilleure expérience est la **vue épaule avec le champ de vision au maximum (110°)** [retour] : elle montre son corps, sa raquette et sa portée au sol. La 1re personne doit offrir au moins la même lisibilité, sans voir son personnage de l'extérieur.
-3. **Un seul mode par défaut, parfait** : supprimer presque tous les réglages (voir §5).
-4. **Garder la logique de jeu existante** qui fonctionne et est testée (§4), en l'**étendant** au court complet et aux 4 joueurs (§7) ; reconstruire le rendu, la caméra, le corps et les contrôles.
+| Étape (ordre du brief) | Commit | Livré |
+|---|---|---|
+| 0. Import du code d'origine | `03ca104` | copie exacte de `glassmaster`, 50 tests verts |
+| 1. 1re personne incarnée, mode unique | `19a2a37` | tête et corps séparés, corps complet, bras en cinématique inverse, 3 réglages, `main.js` découpé |
+| 2. Court complet, 4 joueurs | `b82ae30` | filet obstacle, vitres adverses, positions, qui prend la balle, IA (défense, lob, volée, etc.), option (b) |
+| 3. Service, score, coups avancés, calibrage | `d424d46` | service réel, score du padel, bandeja / víbora / smash / chiquita, test de calibrage |
+| 4. Effets de balle (demande après publication) | `4cafdb1` | coupé, lift, latéral en vol et aux rebonds ; effet par coup ; balle qui tourne ; étiquette et Détail |
+| 5. Vrai système de points (demande après publication) | `eff478a` | formats 1 set / 2 sets gagnants, super jeu décisif, fin de match, tableau de score, annonces, reprise |
+| 6. Caméra calme (retour du joueur) | `ddbbb7f` | tête plus lente, de profil au plus, regard posé sur le point de frappe, joystick par rapport au regard |
+| 7. Balles hautes (retour du joueur) | `510566b` | bandeja / víbora / smash pour toi, lob court des IA, ombre cerclée, point de chute au sol, mini-carte |
+| 8. Vraie physique (retour du joueur) | `9f37cfd` | air (traînée, Magnus), rebonds avec frottement et restitution réalistes, grillage, temps réel à tous les niveaux |
 
-## 3. Ce qui existe et fonctionne [fait]
+`node test/run.js` : **110 tests, 0 échec** (les 10 tests de l'ancien duel, retiré, ne comptent plus). Chaque étape a été jouée en navigateur sans affichage (Chromium, WebGL logiciel) par un joueur automatique, sans erreur JavaScript.
 
-### Boucle de jeu (« Match infini »)
-- Accueil → **Jouer** → la première balle arrive (1 appui). Session infinie, sans game over.
-- **Échange continu** : ton renvoi rebondit chez l'adversaire, qui court le jouer (6 m/s) et renvoie **depuis ce point exact**. Sur un renvoi court, il avance (au plus 2,5 m après le rebond) et attaque avec des balles plus tendues. Après une faute, il sert le point suivant du fond et ton joueur reste où il est.
-- Le joueur se déplace pendant le vol (4 m/s, réaction 250 ms) et appuie sur **Frappe** : **le moment choisi décide du coup**. Si la balle est dans la zone de frappe à ±250 ms, le coup part et la balle est **renvoyée automatiquement**, d'autant plus profond que la qualité est haute (retombée de 12,5 à 18,5 m). Sous une qualité de 0,2, la balle va dans le filet.
-- **Motifs de perte** : trop tôt, trop tard, trop loin, pas atteinte, frappe trop faible.
+## 3. Critères d'acceptation du brief (§9)
 
-### Classification, qualité, meilleur choix (`src/core/quality.js`)
-- **4 types de coups** :
-  - volée : aucun rebond ;
-  - demi-volée : 150 ms au plus après le rebond, balle sous 0,4 m et montante ;
-  - avant vitre : rebond, pas de paroi ;
-  - après vitre : au moins une paroi.
-- **Qualité 0–1**, somme pondérée de :
-  - hauteur au contact (fenêtre idéale par type) : 0,35 ;
-  - placement : 0,3 (derrière la ligne de la balle, pas en dessous, distance de bras de 0,45 à 0,85 m) ;
-  - aisance : 0,15 (marge de temps et vitesse de la balle) ;
-  - dégagement : 0,2 (distance aux parois, coin pénalisé).
-- **Meilleur choix** : la trajectoire est échantillonnée. Pour chaque type de coup, on cherche le meilleur point de frappe **atteignable** depuis la position du joueur au moment de la frappe adverse ; le meilleur type est comparé au choix du joueur.
-- Textes générés à partir des données : toast court, panneau Détail avec angles d'incidence, vitesses et dégagement, et une « règle à retenir ».
-
-### Balles adverses (`src/core/shotgen.js`)
-- **5 familles** : directe, vitre de fond, fond → latérale, latérale → fond, latérale seule croisée.
-- **Échantillonnage par rejet déterministe** (graine). Une balle n'est gardée que si :
-  - elle suit la séquence de contacts de sa famille ;
-  - elle retombe chez le joueur ;
-  - elle est atteignable avec une qualité ≥ 0,45.
-- Génération depuis un point de frappe adverse imposé. La trajectoire se déduit exactement de la hauteur de passage au filet : 2,2–3,2 m au niveau 1, 1,1–1,8 m au niveau 5, plus basse quand l'adversaire attaque.
-- **Répétition espacée** : les familles où le joueur échoue reviennent plus souvent.
-- **Difficulté adaptative** : le niveau monte au-delà de 80 % de balles renvoyées sur 10 balles, descend sous 50 %.
-
-### Physique (`src/core/physics.js`)
-- Rebonds analytiques exacts (aucune traversée possible) : sol (restitution 0,75, 90 % de la vitesse tangentielle conservée), parois (restitution 0,8, 95 % de la vitesse tangentielle conservée).
-- Court 10 × 20 m. Vitres de fond de 3 m ; vitres latérales de 3 m sur 4 m puis de 2 m sur 2 m. Grillage décoratif.
-- Pas d'effet, pas de frottement de l'air.
-
-### Interface, appareil, persistance
-- Un seul canvas plein écran ; pas de scroll, de zoom ni de menu contextuel ; safe-area respectée ; redimensionnement sans recréer la scène.
-- Fullscreen API, verrouillage paysage et Wake Lock (en try/catch). Pause automatique quand l'onglet perd le focus.
-- **Contrôles** :
-  - mobile : joystick dynamique (moitié gauche), gros bouton Frappe (≥ 96 px), multi-touch simultané ;
-  - PC : ZQSD / WASD / flèches, Espace, Échap, F ;
-  - mode gaucher.
-- **HUD minimal** : série en haut, Pause, toast de 1,5 s (icône, texte, couleur) avec bouton Détail après une erreur. Trois bulles de guide au premier lancement.
-- **Écrans** : accueil, pause (résumé de session), réglages, stats (par famille, précision de décision, meilleure série), Détail (replay au ralenti en vue 1re personne, dessus ou côté, avec règle à retenir).
-- **Audio WebAudio généré**, sans fichier (rebond, vitre, frappe, réussite, raté). Vibration.
-- **Stockage** : localStorage en try/catch, schéma versionné (v2), migration depuis la v1, export / import JSON.
-- **PWA** : manifeste fullscreen, service worker cache-first versionné, fonctionne hors ligne. Three.js 0.170.0 en copie locale dans `vendor/`.
-- **Performance** : physique à pas fixe 120 Hz avec interpolation, résolution dynamique, `?debug=1` affiche la cadence. Paramètres d'URL `?seed=` et `?nosw`.
-- **Publication** : GitHub Actions lance les tests puis publie sur GitHub Pages à chaque push sur `main` ou `claude/**`.
-
-### Tests
-`node test/run.js` : **50 tests, 0 échec**, sans librairie. Ils couvrent :
-- la physique et le déterminisme ;
-- le joystick, la caméra et la pose de la raquette ;
-- la classification, la qualité et le meilleur choix ;
-- la génération des balles et la continuité de l'échange ;
-- les stats et la migration du stockage ;
-- la **pureté de `src/core`** : aucun accès au DOM ni à Three.js.
-
-## 4. Architecture actuelle
-
-| Fichier | Lignes | Rôle | Statut **[reco]** |
-|---|---|---|---|
-| `src/core/physics.js` | 285 | Rebonds exacts, contacts, classification des séquences | **Garder tel quel** |
-| `src/core/quality.js` | 307 | Types de coups, qualité, meilleur choix, textes | **Garder** (calibrer ensuite) |
-| `src/core/shotgen.js` | 239 | Balles adverses, familles, atteignabilité | **Garder** |
-| `src/core/rally.js` | 360 | Machine d'états de l'échange, adversaire, renvoi | **Garder** (enrichir l'adversaire plus tard) |
-| `src/core/config.js` | 124 | Toutes les constantes | **Garder** |
-| `src/core/stats.js` | 232 | Schéma, migration, stats, répétition espacée, difficulté | **Garder** |
-| `src/core/geometry.js` | 302 | Repères, joystick, caméra, raquette | Garder les fonctions de base ; **refaire caméra et corps** |
-| `src/render.js` | 517 | Scène Three.js low-poly | **Refaire** (corps, bras, raquette, lisibilité) |
-| `src/main.js` | 750 | Boucle, caméra, écrans, réglages : **trop gros** | **Refaire** en modules plus petits |
-| `src/input.js` | 180 | Joystick, Frappe, clavier | Garder la base, simplifier |
-| `src/hud.js` | 252 | HUD, écrans, réglages, stats, Détail | Simplifier (moins de réglages) |
-| `src/audio.js` | 141 | Sons WebAudio | Garder |
-| `src/settings.js`, `src/storage.js` | 48 / 77 | Réglages, sauvegarde | Réduire les réglages |
-
-Règle à conserver : **`src/core` reste pur** (aucun DOM, aucun Three.js) et testé ; tout le reste l'utilise.
-
-## 5. Mode par défaut unique [reco]
-
-Aujourd'hui, il y a **15 réglages** : vitesse, vue, repère des déplacements, champ de vision, trait de hauteur, frappe auto, trajectoire, meilleur point, replay auto, sensibilité, gaucher, son, vibration, caméra réduite, qualité graphique. C'est trop. Cible :
-
-| Aspect | Comportement unique par défaut |
+| Critère | Statut |
 |---|---|
-| Vue | **1re personne incarnée** (voir §6). Pas de vue épaule, pas de choix |
-| Champ de vision | Fixé par le jeu : ~**105–110° horizontal** en paysage (préféré par le joueur), vertical ≥ 60°, adapté automatiquement en portrait |
-| Déplacements | **Par rapport au court** (haut = vers le filet), indépendants de la tête |
-| Caméra | La tête suit la balle (lissage, zone morte, sans roulis) ; le corps et les déplacements restent orientés vers le filet |
-| Aides visuelles | Toujours actives et discrètes : ombre ronde + **trait balle → sol**, anneau de portée au sol. Pas de trajectoire complète en jeu |
-| Meilleur point | Montré seulement dans le **Détail** et dans le toast d'erreur (pas pendant le jeu) |
-| Difficulté | **Adaptative uniquement** : elle règle aussi la vitesse du jeu au début (le niveau 1 démarre plus lent), au lieu des réglages vitesse et frappe auto |
-| Qualité graphique | Automatique (résolution dynamique), aucun réglage |
-| Mouvements réduits | Suivent `prefers-reduced-motion` du système, aucun réglage |
+| De l'ouverture à la première balle : 1 appui | **[fait]** Jouer → service adverse vers toi après ≈ 1,8 s, sans autre action (test). |
+| Aucun scroll, zoom ou menu involontaire ; joystick et Frappe en même temps | **[fait]** conservé de la version d'origine (multi-touch, `touch-action`, `preventDefault`). **[à vérifier]** sur téléphone. |
+| 1re personne incarnée (§6), aucun choix de vue ni de champ | **[fait]** voir §4. Le Détail garde ses vues de replay (1re personne, dessus, côté) : ce sont des vues d'analyse, pas de jeu. |
+| Partie à 4 joueurs (§7) : animés, attaque / défense, attribution, service et score, vitesses du tableau | **[fait]** voir §5 et §6. |
+| 3 réglages au maximum | **[fait]** son et vibration, mode gaucher, données (test en navigateur : 2 interrupteurs + Données). |
+| Logique conservée et étendue, `src/core` pur, tests ajoutés (tête, corps, IK, déplacements, positions, attribution, service, score) | **[fait]** 45 des 50 tests d'origine conservés (2 adaptés au déplacement avec accélération) ; les 5 autres testaient la vue épaule, la caméra derrière le joueur, le déplacement relatif au regard et l'ancienne raquette, retirés avec ces fonctions et remplacés par les tests du corps ; 50 tests ajoutés. |
+| 60 i/s sur un téléphone milieu de gamme ; PWA hors ligne | **[à vérifier]** ≈ 25 appels de rendu et ≈ 7 000 triangles par image, résolution dynamique et ombres coupables automatiquement ; jamais mesuré sur un vrai téléphone. Service worker mis à jour (`glasslab-v4.5.0`). |
 
-**Réglages restants (3 au total)** : Son (avec la vibration), Mode gaucher, Données (export / import / réinitialiser).
+## 4. La 1re personne [fait sauf mention]
 
-## 6. Cible : une vraie 1re personne « dans un corps » [reco]
+- **Yeux** à 1,65 m, en avant du pivot du cou, qui tournent avec la tête : en regardant vers le bas, ils avancent et descendent comme dans un vrai corps (`body.eyePosition`).
+- **Champ de vision fixe** : 108° horizontal en paysage (téléphone 19,5:9 → 64,8° vertical ; 16:9 → 75°), vertical entre 60° et 100°, horizontal réduit en portrait.
+- **Tête et corps séparés** (`body.lookStep`) : regard lissé (demi-vie 0,08 s, au plus 4 rad/s ≈ 230°/s), cou limité à ±80°, le corps ne pivote qu'au-delà de 55° et jusqu'à 115°. Les angles sont « déroulés » : la tête ne reste jamais bloquée en revenant d'une balle passée derrière. Aucun roulis.
+- **Regard qui suit la balle** (`body.gazeTarget`) : zone morte et suivi partiel quand la balle est loin, suivi serré quand elle approche ; sur une sortie de vitre qui revient, anticipation de 0,22 s ; **de profil au plus** (≈ 92° du filet, sans volte-face d'un côté à l'autre) ; **regard posé sur le point de frappe** dans la dernière seconde avant la frappe prévue.
+- **Caméra calmée après retour du joueur** (« la caméra est compliquée, elle fait des trucs bizarres avec le déplacement »). Mesures sur 360 balles simulées (3 séries de 120), avant → après : grands pivots (> 90° en 1 s) 93 à 104 → 31 à 38 par série (≈ −65 %) ; vitesse maximale de la tête 516 → 229°/s ; temps passé à tourner vite (> 3 rad/s) ≈ 25 % → ≈ 15 % ; balle hors champ au contact 5 → **0 sur 360**. En partie dans le navigateur : regard à plus de 100° du filet 6–8 % → 0 % du temps.
+- **Joystick par rapport au regard** (`geometry.viewRelativeMove`), à la place du repère du court imposé par le brief : haut = devant soi ; direction figée dès que le pouce pousse franchement et tant qu'il pousse, pour que la rotation de la caméra ne fasse pas dévier la course.
+- **Corps** : 16 pièces low-poly par joueur ; buste, bras, jambes et pieds visibles en regardant vers le bas ; ton ombre portée devant toi (soleil derrière ton équipe).
+- **Bras et raquette** : cinématique inverse à deux segments, la main tient la prise (test sur toutes les poses). Garde : haut du cadre visible en bas de l'écran, entre le centre et le bouton Frappe. Préparation : le tamis se présente du côté de la balle, à 0,45–0,85 m (la portée idéale). Geste synchronisé avec le contact ; en 1re personne, la main et la raquette restent à plus de 0,3 m des yeux (test).
+- **Lisibilité** : balle 2×, contour, ombre ronde, trait vers le sol, anneau de portée ; sur les balles hautes, ombre cerclée, point de chute et mini-carte (§ 5.3).
+- **[à vérifier]** Le critère du brief — « juger sa position et la balle au moins aussi bien qu'en vue épaule à 110° » — dépend du ressenti d'un joueur : non vérifiable ici.
 
-Problèmes constatés aujourd'hui [retour + fait] :
-- On juge mal **sa position sur le court et par rapport à la balle**.
-- La tête (caméra) et le corps sont confondus : quand la caméra suit la balle vers la vitre, l'orientation du joueur suit, ce qui désoriente. Avec des déplacements par rapport au court, « avancer » s'inverse à l'écran quand on regarde derrière soi.
-- La raquette est un repère flottant à hauteur de hanche : souvent hors champ, et elle ne tient pas vraiment dans une main.
-- Aucune perception de son propre corps (pieds, jambes, torse) ni de son ombre.
+## 5. La partie à 4 [fait]
 
-Ce qu'il faut viser :
-1. **Corps complet et cohérent** : torse, bras, jambes, pieds, visibles quand on regarde vers le bas ou sur le côté. Proportions humaines, yeux à ~1,65 m, caméra au niveau des yeux et non derrière le joueur.
-2. **Tête et corps séparés** :
-   - la **tête** suit la balle, avec des limites de rotation du cou (≈ ±80° sans tourner le corps) ;
-   - le **corps** pivote progressivement quand la balle passe derrière, comme un vrai joueur qui se retourne vers la vitre ;
-   - les **déplacements** restent liés au court, ou au corps, mais **jamais à la tête**.
-3. **Bras et raquette en cinématique inverse** : main droite (ou gauche en mode gaucher) qui tient la raquette, position de garde visible en bas de l'écran, geste de frappe animé vers la balle au moment de l'appui. La tête de raquette matérialise la portée réelle.
-4. **Repères de proprioception** : ombre de son corps au sol, pieds visibles, anneau de portée discret. Éventuellement une légère inclinaison de la tête vers la balle basse.
-5. **Confort** : pas de roulis, horizon stable, accélérations douces (inertie de quelques centièmes de seconde sur la tête et le corps), aucune nausée en paysage sur téléphone.
-6. **Lisibilité de la balle** : balle grossie (~2×) avec contour, ombre et trait vers le sol ; la balle doit rester visible au moment de frapper.
+- **Physique** : court complet (`physics.simulate(…, { court: 'full' })`) avec les deux moitiés, toutes les vitres et le filet comme obstacle (dans le filet : la balle retombe de son côté ; bande frôlée : elle passe ralentie). Le demi-court historique reste le mode par défaut, inchangé. Tests : aucune traversée, symétrie, cohérence avec le demi-court.
+- **Joueurs** : accélération, freinage, réaction, split-step (`players.js`) ; ta course aussi (5 m/s, ≈ 0,5 s pour la pleine vitesse). L'atteignabilité des balles utilise ce modèle.
+- **Tactique** (`tactics.js`) : défense à 2,4 m de la vitre, attaque à 7,3 m ; partenaires alignés (le partenaire s'aligne sur toi si tu restes au fond) ; transitions sur lob profond et balle courte ; qui prend la balle (côté, centre, coup droit) ; interception des IA (y compris au-dessus de la tête) ; choix du coup ; fautes.
+- **Option (b) orientée entraînement** : 67 % des balles adverses vers toi sur 6 parties simulées (cible 65 %), en familles de vitres selon la répétition espacée ; stats et feedback sur tes coups, avec le contexte du double (alignement, ton côté) dans le message et le Détail.
+- **Service et score** (`score.js`, `match.js`) : service à la cuillère après rebond, derrière la ligne de service, en diagonale ; carré, faute, deuxième service, double faute, let, retour après le rebond ; 15-30-40-jeu, point en or (avantage dans `config.js`), jeux, jeu décisif ; rotation du service.
 
-Critère : un joueur doit juger sa position et la balle **au moins aussi bien qu'en vue épaule avec 110° de champ** aujourd'hui.
+### 5.1 Effets de balle [fait]
 
-## 7. Cible : une vraie partie de padel à 4 [reco]
+- **Modèle** (`physics.js`, depuis l'étape 8, § 5.4) : la balle porte un vecteur rotation. En vol, effet Magnus avec la portance mesurée sur des balles feutrées ; aux contacts (sol, vitres), le frottement agit sur la vraie vitesse de glissement (vitesse + rotation), jusqu'au roulement au plus.
+- **Effets mesurés** sur une balle type (58 km/h, même point de rebond, 1 s de vol) : hauteur maximale après la vitre de fond **0,74 m coupée**, 1,24 m sans effet, **1,72 m liftée** ; vitesse horizontale après le rebond 6,8 / 7,6 / 9,3 m/s (11,8 avant) ; latéral (150 rad/s) : 1,05 m/s de déviation au rebond.
+- **Effet de chaque coup** (`config.styles.*.spin`) : bandeja, volée, service coupés ; víbora coupée et latérale vers la grille ; lob lifté ; smash plat ou lifté ; fond de court et défense variés. Balles reçues sur 3 matchs simulés : **coupées 33 %, liftées 20 %, coupées latérales 6 %, sans effet marqué 41 %**.
+- **Lisibilité** : balle avec sa couture, qui tourne selon l'effet (rotation affichée ralentie à 12 %, au plus 22 rad/s, sinon illisible à 60 i/s) ; étiquette de 1,3 s sur la balle qui t'arrive ; ligne « Effet » dans le Détail (ce que l'effet change et quoi faire).
+- **Rythme** : ≈ 10 frappes et ≈ 23 s par point ; génération d'un coup au pire ≈ 12 ms sur PC (7,5 ms avant l'étape 8).
 
-### Ce que le moteur actuel suppose, et qui doit changer [fait]
-- **Un seul adversaire**, sans partenaire. Le joueur est seul dans sa moitié de court.
-- **La physique ne modélise que la moitié du joueur** : vitre de fond en y = 0, parois latérales. Le **filet** n'est qu'un plan où la simulation s'arrête : la balle ne peut pas le toucher. La **vitre de fond adverse** (y = 20) n'existe pas.
-- **L'adversaire frappe toujours après le rebond** dans son camp : pas de volée, de lob, de smash ni de jeu de ses vitres.
-- **Pas de service ni de score** : les points s'enchaînent sans compter.
-- **Le joueur est un point** qui atteint 4 m/s instantanément ; l'adversaire court à 6 m/s en ligne droite.
+### 5.2 Vrai système de points [fait]
 
-### Ce qu'il faut viser
-1. **4 joueurs** : toi, ton partenaire (IA) et deux adversaires (IA), avec des silhouettes humaines animées (course, pas chassés, préparation, frappe).
-2. **Court complet en physique** : les deux moitiés avec toutes leurs vitres, et le **filet comme obstacle** (balle dans le filet, balle qui passe en frôlant). Les vitres adverses servent aussi au jeu des adversaires.
-3. **Positionnement tactique réaliste** :
-   - chaque équipe est en **défense** (fond, près des vitres) ou en **attaque** (au filet) ; elle monte au filet après un bon lob ou une balle courte, et recule sur un lob adverse ;
-   - les partenaires restent **alignés** et couvrent chacun leur côté (droite / gauche ; le coup droit prend en général la balle au centre) ;
-   - **qui prend la balle** : celui de son côté, ou celui le mieux placé pour une balle au centre. Ton partenaire IA joue les balles de son côté, toi les tiennes.
-4. **Coups variés pour les IA** : défense après vitre, lob, chiquita (balle basse aux pieds), volée, bandeja, víbora, smash. Le choix du coup dépend de la position et de la balle reçue.
-5. **Service et score réels** :
-   - service à la cuillère, après un rebond, derrière la ligne de service, en diagonale ;
-   - comptage 15-30-40-jeu, avec avantage ou point en or ;
-   - jeux et sets affichés discrètement.
+- **Formats** (`score.js`) : **1 set** (6 jeux, jeu décisif à 6-6) ou **2 sets gagnants** avec, à 1 set partout, un **super jeu décisif** en 10 points (2 d'écart). Le match se termine : vainqueur, score par set, plus de service.
+- **Enjeux et annonces** : balle de break, de set, de match (pour vous / pour eux), point en or, jeu décisif ; annonce de l'arbitre après chaque point, **score du serveur en premier** (« 30-15 », « 15 partout », « 40 partout · point en or »), avec la raison du point ; « Jeu · vous », « Set · eux · 6-4 », « Jeu, set et match ».
+- **Interface** : tableau de score type télévision en haut à gauche ; accueil avec le format, « Reprendre » (match sauvegardé à chaque point, relu et validé au chargement) et « Nouveau match » ; écran de fin (victoire ou défaite, score par set, points, tes indicateurs) ; bilan des matchs dans Stats. Le compteur « série » quitte l'écran de jeu (il reste dans la pause et les stats).
+- **Durée mesurée** (joueur automatique qui laisse passer 1 balle sur 4, niveau 3) : **1 set en 15 à 27 min de jeu** (6-1, 4-6, 7-5), mesuré avant l'étape 8 (le jeu tourne maintenant en temps réel à tous les niveaux). Un match en 2 sets gagnants équilibré devrait durer 30 à 50 min (estimation, non mesurée sur un match serré).
 
-   Pour garder l'esprit « session infinie », la partie ne s'arrête jamais : un nouveau set commence à la fin du précédent.
-6. **Vitesses et mouvements adaptés**, avec une accélération réaliste (on ne passe pas de 0 à la vitesse maximale instantanément), un pas d'ajustement avant la frappe (split-step) et un temps de réaction humain.
+### 5.3 Balles hautes : coups au-dessus de la tête et lisibilité [fait]
 
-### Ordres de grandeur réalistes (à calibrer)
-Ce sont des valeurs indicatives, issues de connaissances générales et non de mesures : à vérifier et ajuster en testant.
+- **Retour du joueur** : « les balles hautes sont très dures à comprendre, donc les bandejas et smashs très compliqués ». Deux causes : tu n'avais **pas de coup au-dessus de la tête** (une balle au-dessus de 2 m se jouait après le rebond) ; et en 1re personne, quand le regard monte vers un lob (jusqu'à 40°, avec 66° de champ vertical en paysage), **le bas de l'écran passe au-dessus de l'horizon** : le sol, ton ombre et le point de chute sortent du champ au moment où il faut se placer.
+- **Coup au-dessus de la tête** (`zones.overhead`) : contact avant le rebond entre 1,9 et 3,1 m (idéal 2,3 à 2,8 m), portée 1 m, balle à 0,35 m sur le côté et 0,3 m devant toi. Renvoi automatique : **bandeja** par défaut, **víbora** une fois sur trois sur un bon coup (qualité ≥ 0,6), **smash** sur une balle très bien jouée (qualité ≥ 0,8) à moins de 5 m du filet et prise à 2,45 m ou plus. Geste au-dessus de la tête, main et raquette hors des yeux (test) ; balle visible au contact sur 60 lobs courts simulés (test). Au retour de service, c'est une faute (comme une volée).
+- **Préférence tactique** (`userPrefer.attack`) : au filet, le meilleur choix ajoute +0,06 au coup au-dessus de la tête et +0,03 à la volée (garder le filet) ; le message affiche « bon choix » dès que ton coup est à moins de 0,1 du meilleur.
+- **Lob court des IA** (`styles.lobShort`) : 3,2 à 5,4 m de haut, il retombe entre 3,6 et 6,2 m de la vitre ; une IA remplace son lob par un lob court d'autant plus souvent que sa frappe est mauvaise (25 % à 70 %).
+- **Aides, du coup adverse au rebond** (≈ 2 s en médiane) : ombre plus foncée et cerclée de blanc ; **point de chute** (cible jaune au sol, dans le court) ; **mini-carte** (104 px, en haut à droite sous Pause, rayon 7 m) **orientée comme le joystick**, y compris quand sa direction est figée pendant la course : toi au centre avec l'anneau de portée, ton partenaire, la balle (plus grosse quand elle est haute), son trajet en pointillés jusqu'au point de chute (hors de la surface du court si elle sort) et un **cercle vert à ta place idéale pour le coup au-dessus de la tête** (même repère que le cercle vert du Détail). Le point de chute est calculé une fois par vol (`flight.landing`) et toujours d'accord avec l'arbitrage (test).
+- **Mesures** (6 parties de 5 min, joueur parfait, niveau 3) : balles hautes vers ton camp **18 % des frappes adverses** (83 sur 452), dont 49 pour toi, avec un smash possible sur 37. Sur tes 249 balles : coup au-dessus de la tête **meilleur choix 8 %**, possible 16 % ; 20 joués : **bandeja 12, víbora 5, smash 3**.
 
-| Élément | Ordre de grandeur |
-|---|---|
-| Balle en échange de fond / défense | ~40–70 km/h |
-| Volée | ~50–80 km/h |
-| Lob | ~30–50 km/h, très haut (5–8 m) |
-| Smash | ~80–120 km/h et plus |
-| Joueur : déplacement courant / sprint | ~2–4 m/s / ~5–6 m/s |
-| Joueur : accélération | quelques m/s² : environ 0,5 s pour atteindre la pleine vitesse |
-| Temps de réaction | ~0,2–0,3 s |
-| Temps entre deux frappes | ~1–2 s selon la position (plus court au filet) |
+### 5.4 Vraie physique de balle [fait]
 
-### Tension avec l'objectif pédagogique — décision à prendre
-À 4 joueurs, **ton partenaire prend environ la moitié des balles**, et une partie de l'échange se joue au filet, sans vitre. Il y aura donc **moins de situations de lecture des vitres par minute** que dans l'exercice actuel. Deux options :
-- **(a) Partie réaliste** : distribution naturelle des balles. Plus immersif, moins d'entraînement ciblé.
-- **(b) Partie orientée entraînement** (recommandée par défaut) : mêmes règles, mais les adversaires visent **plus souvent ton côté** (~60–70 % des balles) et jouent plus de balles qui t'obligent à lire les vitres, avec la répétition espacée par famille de balle conservée. Les stats et le feedback ne portent que sur tes coups.
+- **Retour du joueur** : « les rebonds sur les lobs et volées n'ont aucun sens, pas cohérents avec la réalité terrestre » (et « je ne vois pas de différence » sur les aides aux balles hautes). Diagnostic mesuré en partie : le modèle d'effet ajoutait de la vitesse au rebond (frottement calculé sur la rotation seule, pas sur le vrai glissement), la restitution était fixe, il n'y avait pas d'air, et le jeu tournait au ralenti aux bas niveaux (75 % au niveau 1 : gravité perçue ≈ 0,56 g, des balles « de Lune »).
+- **Air** : traînée (C_D 0,55, balle de 57,7 g et 6,6 cm) et effet Magnus (C_L = S / (2,022 S + 0,981), S = R ω / v, mesures publiées sur des balles feutrées). Vitesse limite ≈ 22 m/s ; un smash parti à 110 km/h rebondit à ≈ 95 km/h et touche la vitre vers 55 km/h ; un lob retombe plus raide qu'il ne monte.
+- **Rebonds** : glissement puis roulement selon le frottement (gazon μ 0,6, vitre 0,3), restitution qui baisse avec la vitesse d'impact (gazon 0,78 − 0,009 v, vitre 0,80 − 0,0095 v : essai du règlement FIP respecté sur surface dure, ≈ 1,2 m sur le gazon) ; le grillage amortit (restitution 0,35). Test : 2 000 contacts aléatoires, jamais d'énergie créée, jamais de frottement au-delà du roulement.
+- **Calcul** : segments de 0,05 s d'accélération constante, évaluée au milieu (écart < 2 cm avec une intégration RK4 très fine, test) ; chaque contact reste exact dans son segment ; tir itératif (Broyden) pour viser un rebond ; la balle vue par le receveur est le vol complet lui-même.
+- **Avant → après, en partie** (4 parties de 4 min, joueur parfait, niveau 3) :
 
-### Impact sur le code existant
-- `physics.js` : étendre au court complet (vitres adverses, filet comme obstacle). La sortie actuelle reste un cas particulier.
-- `shotgen.js` : génération depuis n'importe quel joueur, vers n'importe quelle zone, avec les nouveaux types de coups des IA.
-- `rally.js` : passer d'un duel à **4 agents**, avec service, score, attribution de la balle, positionnement et transitions attaque / défense.
-- `quality.js` : conserver l'évaluation de **tes** coups ; ajouter le contexte double (ta position par rapport à ton partenaire, la couverture de ton côté).
-- Nouveaux modules purs suggérés : `players.js` (déplacement avec accélération, réaction, split-step) et `tactics.js` (positionnement, qui prend la balle, choix du coup des IA), testés comme le reste de `src/core`.
+| Mesure | Avant | Après |
+|---|---|---|
+| Hauteur de remontée d'un lob après son rebond (médiane / max) | 3,81 / 4,62 m | **2,35 / 2,78 m** |
+| Lobs qui accélèrent au rebond | 65 % (jusqu'à +38 %) | 8 % (lift très appuyé seulement) |
+| Vitesse horizontale gardée au rebond (fond de court / volée) | 0,92 / 0,85 | **0,66 / 0,71** |
+| Vitesse gardée à la vitre (fond de court / smash) | 0,84 / 0,91 | 0,82 / 0,76 |
+| Vitesse du temps au niveau 1 | 75 % | **100 %** |
+| Temps médian entre la frappe adverse et ton point de frappe idéal, niveau 1 | 2,23 s (ralenti) | 1,56 s |
 
-### Ordre conseillé
-1. 1re personne incarnée (§6), en gardant l'échange actuel.
-2. Court complet, 4 joueurs, positionnement et attribution de la balle, IA avec quelques coups (défense, lob, volée).
-3. Service et score, coups avancés (bandeja, víbora, smash, chiquita), calibrage des vitesses.
+## 6. Calibrage (tableau du brief) [fait]
+
+Mesuré sur 4 parties simulées de 5 minutes (joueur parfait, vraie physique depuis l'étape 8), et vérifié par un test :
+
+| Élément | Brief | Jeu |
+|---|---|---|
+| Balle de fond / défense | 40–70 km/h | 38–72 et 35–70 km/h (médiane 61 et 50) |
+| Volée | 50–80 km/h | 60–83 km/h (médiane 68) |
+| Lob | 30–50 km/h, 5–8 m | **43–59 km/h** (médiane 52), 5,1–8,4 m : avec l'air, il faut partir plus vite pour monter à 5–8 m et retomber au fond |
+| Smash | 80–120 km/h et plus | 98–125 km/h (médiane 111, rare : au filet seulement) |
+| Course / sprint | 2–4 / 5–6 m/s | IA 5,5 m/s (replacement à 55 %), toi 5 m/s |
+| Pleine vitesse | ≈ 0,5 s | 0,5 s (toi), 0,55 s (IA) |
+| Réaction | 0,2–0,3 s | 0,22 s (IA), 0,25 s (calcul de l'atteignabilité) |
+| Temps entre deux frappes | 1–2 s, plus court au filet | médiane 1,6 s, plus court au filet (test) |
+
+Répartition des coups : balles de fond et défense ≈ 50 %, lobs ≈ 22 % (dont lobs courts 4 %), chiquitas ≈ 10 %, services 6 %, volées 4 %, coups au-dessus de la tête ≈ 8 %.
+
+## 7. Choix faits, à valider [reco]
+
+- **Côté du joueur** : tu joues à droite (côté « drive »), ton partenaire à gauche ; au service, les serveurs changent de côté à chaque point comme dans le règlement, puis chacun regagne son côté.
+- **Point en or par défaut** (règle répandue), l'avantage est un simple réglage de `config.js` (pas d'écran : 3 réglages maximum).
+- **Format par défaut : 1 set** (15 à 27 min) ; le format 2 sets gagnants utilise le super jeu décisif au 3e set pour rester jouable sur téléphone. Le choix se fait sur l'accueil (ce n'est pas un réglage) et « Jouer » reste à 1 appui.
+- **Annonce dans la convention de l'arbitre** (score du serveur en premier) : réaliste, mais « 15-30 » peut surprendre quand c'est ton équipe qui mène ; le tableau de score reste par équipe.
+- **Effets** : valeurs plausibles (≈ 3 à 32 tours/s), non mesurées sur de vrais joueurs ; rotation affichée ralentie ; étiquette d'effet = aide d'entraînement (un vrai joueur lit l'effet sur le geste adverse).
+- **Replacement entre deux points** : court fondu au noir, les 4 joueurs sont replacés pour le service (plus confortable en 1re personne qu'un déplacement automatique de la caméra).
+- **Ton renvoi reste automatique** (lob, balle de fond ou volée selon la situation et ta qualité) : le brief entraîne la décision, pas le geste.
+- **Temps réel à tous les niveaux** (fin du ralenti, qui faussait la gravité) : au niveau 1, ≈ 30 % de temps en moins pour réagir qu'avant (1,56 s au lieu de 2,23 s en médiane). Contre-argument : le niveau 1 devient plus dur ; des balles de débutant plus lentes et plus hautes au niveau 1 ont été essayées : elles ne rendent que ≈ 0,1 s (le temps dépend surtout du type de coup). Si c'est trop dur, l'aide à prévoir est d'élargir la fenêtre de frappe aux bas niveaux, pas de ralentir le temps.
+- **Physique de référence** : coefficients publiés pour des balles feutrées et règlement FIP ; gazon (restitution un peu plus faible que sur surface dure, frottement 0,6), vitre (frottement 0,3) et grillage (restitution 0,35) sont des valeurs plausibles, à confirmer par un joueur.
+- **Aides aux balles hautes fortes** : la mini-carte dit où tombe la balle et où te placer. Contre-argument : un vrai joueur doit le lire seul, et le cercle vert apparaît dès qu'un smash est possible, même quand laisser rebondir serait meilleur (possible sur 16 % de tes balles, meilleur choix sur 8 %). Options si c'est trop facile : mini-carte réservée aux niveaux 1 à 3, ou point de chute seul.
+- **Seuils du renvoi au-dessus de la tête** (smash : qualité ≥ 0,8, à moins de 5 m du filet, contact ≥ 2,45 m ; víbora : qualité ≥ 0,6, une fois sur trois) et préférence au filet (+0,06) : non calibrés avec un entraîneur.
+- **Le partenaire est fiable** (≈ 2 fois moins de fautes que les adversaires) pour ne pas frustrer ; les adversaires peuvent gagner des points contre lui (≈ 15 % de ses balles ne sont pas forcément jouables).
 
 ## 8. Limites et dette connues [fait]
 
-- **La frappe n'est pas un contact raquette-balle** : elle est jugée sur la position du joueur et le moment d'appui. La raquette dessinée est un indicateur.
-- **Adversaire simpliste** : il frappe toujours après le rebond ; pas de volée, de lob, de smash ni de jeu de ses vitres.
-- **Balles plus rapides depuis l'échange continu** : environ 43 km/h au niveau 1, contre ~27 km/h avant, car elles partent réellement du fond adverse.
-- La **latérale seule croisée** est rare : elle n'est possible qu'après un renvoi court.
-- **Heuristiques de qualité non calibrées** : le meilleur point atteint souvent 0,9–1, et le seuil de jouabilité (0,45) laisse passer presque toutes les balles.
-- **Physique simplifiée** : pas d'effet ni de frottement de l'air ; grillage décoratif.
-- Toast de 1,5 s court pour toucher « Détail » : la dernière erreur reste accessible depuis la Pause.
-- `src/core` alloue de petits objets à chaque pas (états immuables) ; le rendu n'alloue rien.
-- **Jamais testé sur un vrai téléphone** ; sur iOS, pas d'API plein écran dans Safari ni de vibration.
-- Tests navigateur faits seulement en Chromium sans affichage, avec un rendu WebGL logiciel.
+- **Jamais testé sur un vrai téléphone** ; tests navigateur en Chromium sans affichage, rendu WebGL logiciel. Sur iOS, pas d'API plein écran dans Safari ni de vibration.
+- **Physique de référence, pas mesurée sur un vrai court** : la rotation ne s'amortit pas en vol ; le grillage est un simple amortisseur ; murs infinis (pas de balle « por 3 » ou « por 4 ») ; balle toujours neuve (pas d'usure ni de perte de pression).
+- **Tu ne choisis pas l'effet ni la direction de ton renvoi** : ils suivent le coup choisi automatiquement.
+- **Pas de changement de côté** aux jeux impairs (court symétrique, tu restes en bas).
+- **Pas de contact raquette-balle** : la frappe est jugée sur la position et le moment d'appui.
+- **Heuristiques non calibrées avec des entraîneurs** : qualité, meilleur choix, choix des coups et fautes des IA.
+- **Joystick par rapport au regard** (choix du joueur, contre le brief) : la direction reste figée tant que le pouce pousse ; après une grande rotation de la caméra, il faut relâcher pour repartir dans la direction regardée.
+- **Pas de coup au-dessus de la tête après le rebond** (balle haute qui ressort de la vitre) : elle se joue en défense. Tu ne choisis pas entre bandeja, víbora et smash (automatique).
+- **`src/core` alloue de petits objets à chaque pas** (états immuables, 4 joueurs) ; la génération d'une balle à la frappe adverse coûte ≈ 0,4 ms en médiane et jusqu'à ≈ 9 ms au pire sur PC (≈ 4 fois plus sur téléphone : une image sautée possible, rarement).
+- L'ancien duel (`rally.js`) et le générateur de balles du demi-court ont été retirés à l'étape 8 : le jeu ne les utilisait plus et ils reposaient sur l'ancienne physique sans air (les motifs de perte sont dans `match.js`).
+- **Publication** : chaque envoi publie après les tests ; une version plus ancienne que celle en ligne n'est jamais republiée (cas vécu : la création de `main` sur le commit d'import avait remis l'ancien jeu en ligne) ; une republication sans nouveau code passe par « Run workflow » ou une étiquette `publication-*` (droits du propriétaire du dépôt : l'accès de Claude Code est refusé, 403) ; la version en ligne s'affiche en bas de l'accueil.
 
-## 9. Critères d'acceptation de la nouvelle version
+## 9. À tester à la main sur un vrai téléphone [à vérifier]
 
-- De l'ouverture à la première balle : **1 appui**.
-- Aucun scroll, zoom ou menu involontaire ; joystick et Frappe utilisables en même temps.
-- **1re personne incarnée** conforme au §6 ; aucun choix de vue ni de champ de vision proposé.
-- **Partie à 4 joueurs** conforme au §7 : partenaire et adversaires visibles et animés, positionnement attaque / défense, attribution de la balle, service et score, vitesses dans les ordres de grandeur du tableau.
-- **3 réglages au maximum** (§5).
-- Logique de jeu conservée (§3) et étendue (§7) ; `src/core` toujours pur ; `node test/run.js` au vert, avec des tests ajoutés pour la tête, le corps, la cinématique inverse du bras, le déplacement des joueurs, le positionnement, l'attribution de la balle, le service et le score (fonctions pures).
-- 60 i/s visés sur un téléphone milieu de gamme ; PWA hors ligne conservée.
+1. Ouverture → Jouer → premier service : 1 appui, plein écran et paysage (Android), installation PWA (Android et iOS), lancement hors ligne.
+2. Joystick et Frappe en même temps, aucun zoom, scroll ou menu contextuel ; mode gaucher.
+3. **Confort de la 1re personne** : aucune nausée sur 5 minutes en paysage ; caméra calme (de profil au plus quand la balle passe derrière) ; regard posé sur le point de frappe juste avant de frapper ; court fondu entre les points.
+3 bis. **Joystick par rapport au regard** : haut = devant soi ; la course ne dévie pas quand la caméra tourne ; relâcher pour repartir dans la direction regardée.
+4. **Lisibilité** : juger sa position par rapport à la balle (ombre, trait, anneau, raquette présentée) au moins aussi bien qu'en vue épaule à 110° ; balle visible au moment de frapper.
+5. Garde : haut de la raquette visible sans masquer le jeu ni être caché par le bouton Frappe ; ses bras et ses jambes en regardant vers le bas.
+6. Cadence : 60 i/s visés (`?debug=1`) ; que la résolution dynamique et la coupure des ombres suffisent.
+7. Partie : positions crédibles, annonces « À moi ! / À toi ! », ton service (invite, Frappe), score, jeu, set, fautes de service.
+8. Son, vibration, Wake Lock, pause automatique quand l'application passe en arrière-plan.
+9. **Effets** : l'étiquette (« Balle coupée »…) se lit sans gêner ; la rotation de la balle se voit quand elle approche ; une balle coupée reste basse après la vitre, une liftée sort haut (ressenti de joueur).
+10. **Score** : tableau lisible en plein jeu sur un petit écran ; annonces compréhensibles (« 15-30 » serveur d'abord) ; fin de match et écran de fin ; **Reprendre** après avoir fermé l'application (le match reprend au même score).
+11. **Balles hautes** : la mini-carte se lit d'un coup d'œil sans gêner (taille, place sous Pause) ; pousser le pouce vers le cercle vert y mène ; le point de chute au sol aide quand il est visible ; bandeja et smash réussis sur un lob court ; trop ou pas assez d'aide ?
+12. **Physique** : rebonds des lobs, des volées et des sorties de vitre crédibles (« comme sur un vrai court ») ; vitesse du jeu au niveau 1 supportable en temps réel.
 
-## 10. Brief prêt à copier
+## 10. Suites possibles [reco]
 
-> Dans le dépôt `gaetansbaffi/glassmaster`, branche `claude/confident-curie-9n5fu8-jeu`, lis `docs/ETAT-DES-LIEUX.md` en entier.
-> Reconstruis le jeu « Glass Lab » en **conservant et étendant `src/core/` (physique, échange, génération des balles, qualité, stats, config) et ses tests**, et en refaisant le rendu, la caméra, le corps du joueur, les contrôles et l'interface.
-> Objectif : une **vraie partie de padel en double à 4 joueurs** (§7 : court complet en physique avec filet et vitres adverses, partenaire et adversaires IA animés, positionnement attaque / défense, attribution de la balle, service et score, vitesses réalistes), vécue en **1re personne incarnée** (§6). Choisis l'option (b) « orientée entraînement » du §7, sauf indication contraire. Suis l'ordre conseillé du §7 : livre d'abord une version jouable de chaque étape.
-> Pour la vue : une **vue 1re personne incarnée** (§6). Corps complet visible, tête et corps séparés, bras et raquette en cinématique inverse, déplacements par rapport au court, champ de vision large fixé par le jeu. Un joueur doit juger sa position et la balle au moins aussi bien qu'avec l'actuelle vue épaule à 110°.
-> Un **seul mode par défaut** : 3 réglages au maximum (son, gaucher, données). Tout le reste est fixé (§5).
-> Respecte les critères d'acceptation (§9). Mobile d'abord, PC au clavier. JavaScript vanilla + Three.js local, sans bundler.
-> Fais des commits par étape et ouvre une pull request. Liste dans la PR ce qui doit être testé à la main sur un vrai téléphone.
+1. Tester sur 2 ou 3 téléphones (Android milieu de gamme, iPhone) et ajuster le confort (vitesse de tête, zone morte, fondu) et la cadence.
+2. Calibrer avec un entraîneur : poids de la qualité, meilleur choix, choix des coups et fautes des IA, part des balles vers toi.
+3. Sorties « por 3 / por 4 » (murs finis, balle jouable hors du court) ; valider avec un joueur les rebonds sur le gazon, les vitres et le grillage.
+4. Donner au joueur le choix de la direction et de l'effet de son renvoi (par exemple : glisser sur Frappe vers le haut = lift, vers le bas = coupé), si l'entraînement de la décision le justifie.
+5. Changement de côté aux jeux impairs (pause de 90 s raccourcie) et statistiques par match (aces, fautes directes, coups gagnants).

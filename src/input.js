@@ -4,6 +4,8 @@
  * Mobile : le joystick apparaît là où le pouce se pose dans la moitié gauche (droite en mode gaucher) ;
  * le bouton Frappe est un élément séparé, donc les deux se pilotent en même temps (pointerId distincts).
  * PC : ZQSD / WASD / flèches, Espace = Frappe, Échap = Pause, F = plein écran. Pas de capture de souris.
+ * Le vecteur rendu est celui du joystick (haut = devant, droite = droite) ; la session le tourne selon le
+ * regard (geometry.viewRelativeMove : haut = devant toi, direction figée pendant la course).
  * Le calcul du vecteur (zone morte, courbe, normalisation) est la fonction pure G.joystickVector.
  */
 import G from './core/geometry.js';
@@ -16,7 +18,7 @@ export function createInput(opts) {
   const handlers = { pause: [], fullscreen: [], activity: [] };
   const emit = (name) => handlers[name].forEach((fn) => fn());
 
-  const cfg = { lefty: false, sensitivity: 1, enabled: false };
+  const cfg = { lefty: false, enabled: false };
   const keys = new Set();
   let strikeQueued = false;
 
@@ -73,7 +75,7 @@ export function createInput(opts) {
     const r = radius();
     const dx = e.clientX - joy.ox;
     const dy = e.clientY - joy.oy;
-    joy.vec = G.joystickVector(dx, dy, r, { deadZone: 0.15, curve: 1.5, sensitivity: cfg.sensitivity });
+    joy.vec = G.joystickVector(dx, dy, r, { deadZone: 0.15, curve: 1.5 });
     const l = Math.hypot(dx, dy) || 1;
     const k = Math.min(1, r / l);
     knob.style.transform = `translate(calc(-50% + ${dx * k}px), calc(-50% + ${dy * k}px))`;
@@ -144,7 +146,7 @@ export function createInput(opts) {
   window.addEventListener('resize', () => joy.id === null && placeGhost());
 
   return {
-    /** Entrée de déplacement relative au regard : x = pas de côté, y = avancer (norme ≤ 1). */
+    /** Vecteur du joystick ou du clavier (norme ≤ 1) : x = vers la droite, y = vers le haut (devant). */
     moveVector() {
       if (!cfg.enabled) return { x: 0, y: 0 };
       const k = G.keyboardVector(keys);
@@ -169,9 +171,6 @@ export function createInput(opts) {
       cfg.lefty = !!on;
       document.documentElement.classList.toggle('lefty', cfg.lefty);
       placeGhost();
-    },
-    setSensitivity(s) {
-      cfg.sensitivity = s;
     },
     on(name, fn) {
       handlers[name].push(fn);

@@ -5,8 +5,8 @@
 import Stats from './core/stats.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 
-const KEY = 'glasslab.v2';
-const OLD_KEYS = ['glasslab.v1']; // application multi-modes d'origine
+const KEY = 'glasslab.v3';
+const OLD_KEYS = ['glasslab.v2', 'glasslab.v1']; // échange en duel, puis application multi-modes d'origine
 
 function store() {
   try {

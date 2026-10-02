@@ -1,15 +1,25 @@
 /*
- * Glass Lab — progression du Match infini : schéma de sauvegarde versionné, migration,
- * enregistrement des balles, répétition espacée, difficulté adaptative et statistiques.
+ * Glass Lab — progression : schéma de sauvegarde versionné, migration, enregistrement des balles,
+ * répétition espacée, difficulté adaptative, statistiques, format de match préféré et match en cours.
  * Fonctions pures : la lecture / écriture du localStorage est faite par src/storage.js.
  */
+import SC from './score.js';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
+export const FORMAT_IDS = ['1set', '3sets'];
 export const MATCH_FAMILIES = ['direct', 'A', 'B', 'C', 'D'];
-export const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass'];
+export const SHOT_TYPES = ['volley', 'halfVolley', 'beforeGlass', 'afterGlass', 'overhead'];
 const MAX_BALLS = 5000;
 
-/** État vierge. `settings` reçoit les valeurs par défaut fournies par l'interface. */
+/** Bilan cumulé des parties en double : [gagnés, perdus] pour les points, jeux, sets et matchs. */
+function emptyRecord() {
+  return { points: [0, 0], games: [0, 0], sets: [0, 0], matches: [0, 0] };
+}
+
+/**
+ * État vierge. `settings` reçoit les valeurs par défaut fournies par l'interface.
+ * format : format de match choisi à l'accueil ; current : match en cours (repris par « Reprendre »).
+ */
 function createState(defaultSettings) {
   return {
     version: SCHEMA_VERSION,
@@ -18,11 +28,34 @@ function createState(defaultSettings) {
     bestStreak: 0,
     guideDone: false,
     settings: Object.assign({}, defaultSettings),
+    record: emptyRecord(),
+    format: FORMAT_IDS[0],
+    current: null,
     balls: [],
   };
 }
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
+
+/** Match en cours relu d'une sauvegarde : { format, score, pointsWon, at } valide, ou null. */
+function cleanCurrent(raw) {
+  if (!raw || typeof raw !== 'object' || FORMAT_IDS.indexOf(raw.format) < 0) return null;
+  const score = SC.restore(raw.score);
+  if (!score || score.winner != null) return null;
+  const pw = Array.isArray(raw.pointsWon) ? raw.pointsWon : [];
+  return { format: raw.format, score, pointsWon: [0, 1].map((i) => Math.max(0, Math.round(+pw[i]) || 0)), at: isNum(raw.at) ? raw.at : 0 };
+}
+
+/** Bilan relu d'une sauvegarde : entiers positifs uniquement, sinon zéro. */
+function cleanRecord(raw) {
+  const out = emptyRecord();
+  if (!raw || typeof raw !== 'object') return out;
+  for (const k in out) {
+    const pair = raw[k];
+    if (Array.isArray(pair)) for (const i of [0, 1]) out[k][i] = Math.max(0, Math.round(+pair[i]) || 0);
+  }
+  return out;
+}
 
 /** Une balle enregistrée est-elle exploitable ? (les autres sont ignorées à la migration) */
 function validBall(b) {
@@ -46,7 +79,8 @@ function migrate(raw, defaultSettings) {
   const fresh = createState(defaultSettings);
   if (!raw || typeof raw !== 'object') return { state: fresh, from: 0 };
   try {
-    if (raw.version === SCHEMA_VERSION) {
+    if (raw.version === SCHEMA_VERSION || raw.version === 2) {
+      // Version 2 (échange en duel) : même structure ; les réglages supprimés sont abandonnés
       const balls = Array.isArray(raw.balls) ? raw.balls.filter(validBall).slice(-MAX_BALLS) : [];
       return {
         state: {
@@ -56,9 +90,12 @@ function migrate(raw, defaultSettings) {
           bestStreak: Math.max(0, Math.round(+raw.bestStreak) || 0),
           guideDone: !!raw.guideDone,
           settings: cleanSettings(raw.settings, defaultSettings),
+          record: cleanRecord(raw.record),
+          format: FORMAT_IDS.indexOf(raw.format) >= 0 ? raw.format : FORMAT_IDS[0],
+          current: cleanCurrent(raw.current),
           balls,
         },
-        from: SCHEMA_VERSION,
+        from: raw.version,
       };
     }
     if (raw.version === 1 || Array.isArray(raw.attempts)) {
@@ -200,6 +237,12 @@ function decisionStats(balls) {
   return { n: hits.length, accuracy: hits.length ? hits.filter((b) => b.decisionOk).length / hits.length : null, byChosen };
 }
 
+/** Double : part de tes frappes jouées aligné avec ton partenaire (balles enregistrées depuis la v3). */
+function doublesStats(balls) {
+  const list = balls.filter((b) => typeof b.aligned === 'boolean');
+  return { n: list.length, aligned: list.length ? list.filter((b) => b.aligned).length / list.length : null };
+}
+
 /** Résumé d'une session (balles jouées, qualité moyenne, meilleure série, précision de décision). */
 function sessionSummary(balls, session) {
   const list = balls.filter((b) => b.session === session);
@@ -217,7 +260,10 @@ const Stats = {
   SCHEMA_VERSION,
   MATCH_FAMILIES,
   SHOT_TYPES,
+  FORMAT_IDS,
+  emptyRecord,
   createState,
+  cleanCurrent,
   validBall,
   migrate,
   importState,
@@ -226,6 +272,7 @@ const Stats = {
   familyWeights,
   familyStats,
   decisionStats,
+  doublesStats,
   sessionSummary,
 };
 

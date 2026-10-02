@@ -109,6 +109,21 @@ export function createAudio() {
       tone('sine', 1290, 1250, 0.12 * k, 0.002, 0.12);
       burst('highpass', 2500, 0.8, 0.18 * k, 0.04);
     },
+    /** Balle dans le filet ou sur la bande : bruit mat et étouffé. */
+    net(intensity) {
+      if (!ready()) return;
+      const k = clamp01(intensity);
+      burst('lowpass', 900, 0.6, 0.3 * k, 0.09);
+      tone('sine', 95, 60, 0.18 * k, 0.004, 0.08);
+    },
+    /** Point marqué (deux notes claires) ou perdu (note grave), discret. */
+    point(won) {
+      if (!ready()) return;
+      if (won) {
+        tone('sine', 880, 880, 0.12, 0.005, 0.1, 0.02);
+        tone('sine', 1175, 1175, 0.1, 0.005, 0.16, 0.11);
+      } else tone('triangle', 220, 165, 0.14, 0.01, 0.28);
+    },
     /** Frappe de raquette. */
     hit(intensity) {
       if (!ready()) return;
