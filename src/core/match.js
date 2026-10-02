@@ -530,6 +530,7 @@ const POINT_REASONS = {
   back: 'balle gagnante',
   dead: 'balle gagnante',
   doubleFault: 'double faute',
+  exit: 'balle sortie du court (porte ou au-dessus du mur)',
 };
 
 function endPoint(s, winner, reason) {

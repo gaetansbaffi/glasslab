@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import G from '../core/geometry.js';
+import P from '../core/physics.js';
 
 export const COURT_W = 10;
 export const COURT_L = 20;
@@ -25,28 +26,38 @@ export const COLORS = {
 export const sv = (x, y, z) => G.worldToSceneInto(new THREE.Vector3(), x, y, z);
 
 /**
- * Panneaux d'une moitié de court (y ∈ [0, 10]) ; l'autre moitié par symétrie y → 20 − y.
- * Vitre de fond 3 m + 1 m de grillage ; latérales vitrées 3 m sur 4 m puis 2 m sur 2 m,
- * grillage au-dessus et sur le reste de la longueur (comme physics.COURT).
+ * Panneaux d'une moitié de court (y ∈ [0, 10]) ; l'autre moitié par symétrie y → 20 − y. Construits
+ * depuis physics.COURT (règlement FIP), pour que ce qu'on voit soit ce que la balle touche :
+ * fond = vitre 3 m + grille 1 m ; latérales = vitre 3 m sur 2 m, vitre 2 m sur 2 m, grille au-dessus
+ * (jusqu'à 4 m puis 3 m) et grille de 3 m jusqu'au filet, percée d'une porte (ouverte) près du filet.
  */
-const HALF_WALLS = {
-  glass: [
-    { wall: 'back', from: 0, to: COURT_W, z0: 0, z1: 3 },
-    { wall: 'left', from: 0, to: 4, z0: 0, z1: 3 },
-    { wall: 'left', from: 4, to: 6, z0: 0, z1: 2 },
-    { wall: 'right', from: 0, to: 4, z0: 0, z1: 3 },
-    { wall: 'right', from: 4, to: 6, z0: 0, z1: 2 },
-  ],
-  mesh: [
-    { wall: 'back', from: 0, to: COURT_W, z0: 3, z1: 4 },
-    { wall: 'left', from: 0, to: 4, z0: 3, z1: 4 },
-    { wall: 'left', from: 4, to: 6, z0: 2, z1: 3 },
-    { wall: 'left', from: 6, to: 10, z0: 0, z1: 3 },
-    { wall: 'right', from: 0, to: 4, z0: 3, z1: 4 },
-    { wall: 'right', from: 4, to: 6, z0: 2, z1: 3 },
-    { wall: 'right', from: 6, to: 10, z0: 0, z1: 3 },
-  ],
-};
+function halfWalls() {
+  const C = P.COURT;
+  const glass = [{ wall: 'back', from: 0, to: COURT_W, z0: 0, z1: C.backGlassHeight }];
+  const mesh = [{ wall: 'back', from: 0, to: COURT_W, z0: C.backGlassHeight, z1: C.backHeight }];
+  const doors = [];
+  for (const wall of ['left', 'right']) {
+    for (const g of C.sideGlass) glass.push({ wall, from: g.from, to: g.to, z0: 0, z1: g.height });
+    // Grille : au-dessus des vitres, puis pleine hauteur, sauf l'ouverture de la porte
+    const cuts = [0, C.depth];
+    for (const g of C.sideGlass) cuts.push(g.from, g.to);
+    for (const d of C.doors) cuts.push(d.from, d.to);
+    const ys = [...new Set(cuts)].sort((a, b) => a - b);
+    for (let i = 0; i + 1 < ys.length; i++) {
+      const y0 = ys[i];
+      const y1 = ys[i + 1];
+      const mid = (y0 + y1) / 2;
+      const top = C.sideHeight.find((h) => mid >= h.from && mid <= h.to).height;
+      const g = C.sideGlass.find((p) => mid >= p.from && mid <= p.to);
+      const d = C.doors.find((p) => mid >= p.from && mid <= p.to);
+      const z0 = g ? g.height : d ? d.height : 0;
+      if (top > z0) mesh.push({ wall, from: y0, to: y1, z0, z1: top });
+      if (d) doors.push({ wall, from: y0, to: y1, height: d.height, top });
+    }
+  }
+  return { glass, mesh, doors };
+}
+const HALF_WALLS = halfWalls();
 
 function panelCorners(p, half) {
   const my = (y) => (half ? COURT_L - y : y);
@@ -91,25 +102,28 @@ function meshGridSegments(corners, step, out) {
 }
 
 function frameBars() {
+  const C = P.COURT;
   const bars = [];
   const T = 0.07;
   const post = (x, y, h) => bars.push({ c: [x, y, h / 2], s: [T, T, h] });
   const railX = (y, x0, x1, z) => bars.push({ c: [(x0 + x1) / 2, y, z], s: [x1 - x0, T, T] });
   const railY = (x, y0, y1, z) => bars.push({ c: [x, (y0 + y1) / 2, z], s: [T, Math.abs(y1 - y0), T] });
+  const height = (y) => C.sideHeight.find((h) => y >= h.from && y <= h.to).height;
   for (const half of [0, 1]) {
     const my = (y) => (half ? COURT_L - y : y);
-    for (let x = 0; x <= COURT_W; x += 2) post(x, my(0), 4);
-    railX(my(0), 0, COURT_W, 3);
-    railX(my(0), 0, COURT_W, 4);
+    for (let x = 0; x <= COURT_W; x += 2) post(x, my(0), C.backHeight);
+    railX(my(0), 0, COURT_W, C.backGlassHeight);
+    railX(my(0), 0, COURT_W, C.backHeight);
     for (const x of [0, COURT_W]) {
-      post(x, my(2), 4);
-      post(x, my(4), 4);
-      post(x, my(6), 3);
-      post(x, my(8), 3);
-      railY(x, my(0), my(4), 3);
-      railY(x, my(0), my(4), 4);
-      railY(x, my(4), my(6), 2);
-      railY(x, my(4), my(10), 3);
+      for (const y of [2, 4, 6, 8]) post(x, my(y), height(y));
+      for (const g of C.sideGlass) railY(x, my(g.from), my(g.to), g.height);
+      for (const h of C.sideHeight) railY(x, my(h.from), my(h.to), h.height);
+      // Porte : montants et linteau
+      for (const d of C.doors) {
+        post(x, my(d.from), height(d.from));
+        post(x, my(d.to), height(d.to));
+        railY(x, my(d.from), my(d.to), d.height);
+      }
     }
   }
   // Poteaux du filet

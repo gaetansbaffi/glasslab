@@ -41,6 +41,12 @@ Conçu **mobile d'abord** (plein écran, deux pouces, paysage conseillé), jouab
 - **Partie orientée entraînement** : les adversaires visent ton côté ≈ 65 % du temps, avec des balles qui t'obligent à lire les vitres ; les familles de balles où tu échoues reviennent plus souvent (répétition espacée). Les stats et le feedback ne portent que sur tes coups.
 - **Difficulté adaptative** : au-delà de 80 % de balles renvoyées sur 10, le niveau monte (balles plus rapides, adversaires plus solides) ; sous 50 %, il descend. Le niveau règle la vitesse et la hauteur des balles, jamais celle du temps.
 
+## Simulateur de vitres
+
+`simulateur.html` (bouton **Simulateur** sur l'accueil) : la physique du jeu, sans le jeu. Tu choisis le point de frappe en face et le point de rebond chez toi (en touchant le court), la vitesse de départ, tendue ou lobée, le lift / coupé et l'effet latéral ; le simulateur montre la trajectoire de dessus et de côté (animée, ralenti ¼), puis chaque contact (sol, vitre, grille, porte) avec l'instant, la hauteur et la vitesse, la famille de vitres, la hauteur de sortie après la dernière paroi et le temps pour jouer la balle. Préréglages : vitre de fond, double vitre, latérale puis fond, latérale seule, grille, porte, lob lifté, bandeja coupée.
+
+**Court réglementaire (FIP)** : fond = vitre 3 m + grille 1 m ; latérales = vitre 3 m de haut sur 2 m puis 2 m de haut sur 2 m (escalier), grille au-dessus (jusqu'à 4 m puis 3 m) et grille de 3 m jusqu'au filet ; une porte ouverte (0,8 × 2 m) dans chaque latérale de chaque côté du filet, entre 0,8 et 1,6 m du filet (hypothèse : le règlement les place au centre des latérales). La grille absorbe le choc (la balle y meurt) ; par une porte ou au-dessus d'un mur, la balle sort du court : point pour le frappeur si elle avait rebondi.
+
 ## Réglages (3)
 
 **Son et vibration**, **mode gaucher** (raquette dans la main gauche, joystick à droite, Frappe à gauche), **données** (export / import JSON, réinitialisation). Tout le reste est fixé : vue, champ de vision, déplacements, aides, vitesse, qualité graphique (automatique), mouvements réduits (selon `prefers-reduced-motion` du système).
@@ -142,7 +148,7 @@ tools/make-icons.js       génère les icônes PWA
 ## Limites connues
 
 - **Jamais testé sur un vrai téléphone** : seulement en Chromium sans affichage, avec un rendu WebGL logiciel (≈ 20 à 50 i/s, non représentatif). Fluidité, ressenti du joystick, confort de la 1re personne (nausée), plein écran, verrouillage paysage, vibration et son restent à vérifier.
-- **Physique de référence, pas mesurée sur un vrai court** : coefficients d'air et de rebond tirés de mesures publiées sur des balles feutrées (tennis) et du règlement FIP ; gazon, vitres et grillage avec des valeurs plausibles, à confirmer par un joueur. La rotation ne s'amortit pas en vol ; le grillage est un simple amortisseur ; les murs sont infinis : la balle ne sort jamais du court (pas de smash « por 3 » ou « por 4 »).
+- **Physique de référence, pas mesurée sur un vrai court** : coefficients d'air et de rebond tirés de mesures publiées sur des balles feutrées (tennis) et du règlement FIP ; gazon, vitres et grillage avec des valeurs plausibles, à confirmer par un joueur. La rotation ne s'amortit pas en vol ; la grille est un simple amortisseur ; une balle sortie du court (porte, au-dessus d'un mur) ne se joue pas dehors (pas de « por 3 » ou « por 4 »).
 - **Temps réel à tous les niveaux** : sans le ralenti, au niveau 1 tu as ≈ 30 % de temps en moins qu'avant pour réagir (1,6 s au lieu de 2,2 s en médiane entre la frappe adverse et ton point de frappe idéal).
 - **Tu ne choisis pas l'effet de ton renvoi** : il suit le coup joué automatiquement (lob lifté, volée coupée…).
 - **La frappe n'est pas un contact raquette-balle** : elle est jugée sur ta position et le moment d'appui ; la raquette dessinée est un indicateur de portée.

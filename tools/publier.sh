@@ -38,7 +38,7 @@ fi
 
 # 2. Site : fichiers du jeu, service worker à la version du commit, fiche de publication
 site=$(mktemp -d)
-cp -r index.html style.css manifest.webmanifest sw.js icons src vendor "$site/"
+cp -r index.html simulateur.html style.css manifest.webmanifest sw.js icons src vendor "$site/"
 touch "$site/.nojekyll"
 sed -i "s/^const VERSION = '[^']*';/const VERSION = 'glasslab-${short}';/" "$site/sw.js"
 grep -q "^const VERSION = 'glasslab-${short}';" "$site/sw.js" || { echo "sw.js : VERSION introuvable" >&2; exit 1; }

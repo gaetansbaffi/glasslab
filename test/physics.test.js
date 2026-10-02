@@ -310,3 +310,27 @@ test('filet : balle basse dans le filet (reste de son côté), balle qui frôle 
   assert(back && Math.abs(back.pos.y - (20 - P.DEFAULT_PARAMS.radius)) < 1e-9, 'vitre de fond adverse');
   assert(P.onGlass({ type: 'right', pos: { x: 10, y: 18, z: 2.5 } }) && !P.onGlass({ type: 'right', pos: { x: 10, y: 13, z: 1 } }), 'vitres latérales adverses');
 });
+
+test('court réglementaire (FIP) : vitres, grille, porte ouverte ; la grille amortit, la balle sort par la porte', () => {
+  const W = (t, y, z) => P.wallAt(t, y, z);
+  // Fond : vitre 3 m, grille jusqu'à 4 m, au-dessus : dehors
+  assert(W('back', 5, 2.9) === 'glass' && W('back', 5, 3.5) === 'mesh' && W('back', 5, 4.2) === 'open', 'fond');
+  // Latérales : vitre 3 m sur 2 m, vitre 2 m sur 2 m, puis grille 3 m ; porte près du filet ; idem en face
+  assert(W('left', 1, 2.8) === 'glass' && W('left', 1, 3.5) === 'mesh' && W('left', 3, 1.9) === 'glass' && W('left', 3, 2.5) === 'mesh', 'escalier vitré');
+  assert(W('right', 5, 1) === 'mesh' && W('right', 7, 2.9) === 'mesh' && W('right', 7, 3.2) === 'open', 'grille latérale');
+  assert(W('left', 8.8, 1) === 'open' && W('left', 8.8, 2.5) === 'mesh' && W('right', 20 - 8.8, 1) === 'open', 'portes des deux moitiés');
+  // Même balle contre la vitre (y = 1,5) et contre la grille (y = 6) : la grille la rend bien plus lente
+  const hit = (y) => {
+    const sim = P.simulate({ x: 8, y, z: 1.2, vx: 14, vy: 0, vz: 1 }, { court: 'full', maxFloorBounces: 1 });
+    const c = sim.contacts.find((k) => k.type === 'right');
+    return P.speed(c.vOut) / P.speed(c.vIn);
+  };
+  const glass = hit(1.5);
+  const mesh = hit(6);
+  assert(mesh < 0.6 * glass, `vitesse gardée : vitre ${glass.toFixed(2)}, grille ${mesh.toFixed(2)}`);
+  // Balle qui rebondit puis file vers la porte : elle sort, point pour le frappeur
+  const f = F.makeFlight(P.launchToBounce({ x: 1, y: 12, z: 1.8 }, { x: 8.8, y: 9.1 }, 0.9), 1);
+  const exit = f.sim.contacts.find((c) => c.type === 'exit');
+  assert(exit && exit.wall === 'right' && exit.pos.y > 8.3 && exit.pos.y < 9.3, 'sortie par la porte : ' + JSON.stringify(f.sim.contacts.map((c) => c.type)));
+  assert(f.verdict.winner === 1 && f.verdict.reason === 'exit', 'point pour le frappeur : ' + JSON.stringify(f.verdict));
+});

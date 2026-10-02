@@ -55,6 +55,7 @@ function judge(sim, team) {
       if (c.type === 'floor' && c.side === recv) bounceAt = c.t;
       else return { winner: recv, fault: true, reason: 'out', t: c.t, bounceAt: null };
     } else if (c.type === 'floor') return { winner: team, fault: false, reason: 'double', t: c.t, bounceAt };
+    else if (c.type === 'exit') return { winner: team, fault: false, reason: 'exit', t: c.t, bounceAt };
   }
   if (!crossed) return { winner: recv, fault: true, reason: 'net', t: netAt != null ? netAt + 0.6 : sim.endT, bounceAt: null };
   if (bounceAt == null) return { winner: recv, fault: true, reason: 'out', t: sim.endT, bounceAt: null };
@@ -69,7 +70,7 @@ function familyOf(sim) {
 }
 
 /** Contact du vol complet vu depuis le repère d'une équipe (vitre de fond de l'équipe du haut = « back »). */
-const MIRROR_TYPE = { back: 'backFar', backFar: 'back', left: 'right', right: 'left', floor: 'floor' };
+const MIRROR_TYPE = { back: 'backFar', backFar: 'back', left: 'right', right: 'left', floor: 'floor', exit: 'exit' };
 function contactInFrame(team, c, t0) {
   const v = (u) => (team === 0 ? { vx: u.vx, vy: u.vy, vz: u.vz } : { vx: -u.vx, vy: -u.vy, vz: u.vz });
   return { type: team === 0 ? c.type : MIRROR_TYPE[c.type], t: c.t - t0, pos: toTeamFrame(team, c.pos), vIn: v(c.vIn), vOut: v(c.vOut) };

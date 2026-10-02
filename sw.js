@@ -12,6 +12,7 @@ const VERSION = 'glasslab-v4.5.0';
 const FILES = [
   './',
   './index.html',
+  './simulateur.html',
   './style.css',
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -44,6 +45,8 @@ const FILES = [
   './src/core/shotgen.js',
   './src/core/stats.js',
   './src/core/tactics.js',
+  './src/sim/model.js',
+  './src/sim/simulator.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -73,9 +76,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(fetch(req.url, { cache: 'no-store' }).catch(() => caches.match(req)));
     return;
   }
-  // Ouverture de la page (avec ou sans ?seed=, ?debug=…) : la page en cache
+  // Ouverture d'une page (avec ou sans ?seed=, ?debug=…) : cette page en cache (le jeu pour la racine)
   if (req.mode === 'navigate' && url.origin === self.location.origin) {
-    event.respondWith(caches.match('./index.html').then((hit) => hit || fetch(req)));
+    const page = /\/simulateur\.html$/.test(url.pathname) ? './simulateur.html' : './index.html';
+    event.respondWith(caches.match(page).then((hit) => hit || fetch(req)));
     return;
   }
   // Cache d'abord ; sinon réseau, et mise en cache à l'exécution (y compris hors liste)

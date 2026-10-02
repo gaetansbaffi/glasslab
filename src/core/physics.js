@@ -34,11 +34,20 @@ const COURT = {
   depth: 10, // demi-longueur : le filet est en y = 10
   length: 20,
   serviceLine: 3.05, // depuis la vitre de fond (6,95 m depuis le filet)
-  backGlassHeight: 3,
-  sideGlass: [ // panneaux de vitre latérale : jusqu'à y = 4 m (3 m de haut), puis 4–6 m (2 m de haut)
-    { from: 0, to: 4, height: 3 },
-    { from: 4, to: 6, height: 2 },
+  // Parois d'une moitié (règlement FIP), y mesuré depuis la vitre de fond de cette moitié :
+  backGlassHeight: 3, // fond : vitre de 3 m…
+  backHeight: 4, // … surmontée de 1 m de grille
+  sideGlass: [ // latérales : vitre de 3 m de haut sur les 2 premiers mètres, puis de 2 m sur 2 m (escalier)
+    { from: 0, to: 2, height: 3 },
+    { from: 2, to: 4, height: 2 },
   ],
+  sideHeight: [ // hauteur totale (vitre + grille) : 4 m, puis 3 m ; ensuite grille seule de 3 m jusqu'au filet
+    { from: 0, to: 2, height: 4 },
+    { from: 2, to: 10, height: 3 },
+  ],
+  // Accès (portes ouvertes) dans la grille de chaque latérale, de chaque côté du filet : 0,8 m × 2 m.
+  // Hypothèse : près du filet, comme sur la plupart des courts (le règlement les place au centre des latérales).
+  doors: [{ from: 8.4, to: 9.2, height: 2 }],
   netHeight: 0.88,
 };
 
@@ -60,9 +69,9 @@ const DEFAULT_PARAMS = {
   floorGrip: 0.6, // frottement balle / gazon sableux
   glassGrip: 0.3, // frottement balle / vitre
   spinInertia: 0.55, // moment d'inertie / (m R²) : sphère creuse à paroi épaisse
-  meshE: 0.35, // grillage : il amortit la balle (restitution, vitesse le long du grillage, rotation)
-  meshKeep: 0.55,
-  meshSpin: 0.3,
+  meshE: 0.25, // grille : elle absorbe le choc (restitution faible), freine la balle le long de la grille
+  meshKeep: 0.45, // et casse sa rotation : la balle « meurt » contre la grille
+  meshSpin: 0.25,
   minBounceVz: 0.3, // en dessous, la balle « roule » : fin de simulation
   // Filet (court complet) : une balle dans le filet est presque arrêtée et retombe de son côté ;
   // une balle qui frôle la bande passe, ralentie, avec un petit rebond vers le haut.
@@ -240,14 +249,22 @@ function restitution(surface, vn, params) {
   return Math.max(P.eMin, Math.min(e0, e0 - k * Math.abs(vn)));
 }
 
-/** Vrai si une paroi est vitrée au point (x, y, z) (sinon grillage). Deux moitiés. */
+/**
+ * Nature d'une paroi au point de contact (y, z), dans les deux moitiés : 'glass' (vitre), 'mesh'
+ * (grille) ou 'open' (au-dessus du mur, ou porte : la balle sort du court).
+ */
+function wallAt(type, y, z) {
+  if (type === 'back' || type === 'backFar') return z <= COURT.backGlassHeight ? 'glass' : z <= COURT.backHeight ? 'mesh' : 'open';
+  if (!isSide(type)) return 'glass';
+  const yy = y > COURT.depth ? COURT.length - y : y;
+  if (COURT.doors.some((d) => yy >= d.from && yy <= d.to && z <= d.height)) return 'open';
+  if (COURT.sideGlass.some((p) => yy >= p.from && yy <= p.to && z <= p.height)) return 'glass';
+  return COURT.sideHeight.some((p) => yy >= p.from && yy <= p.to && z <= p.height) ? 'mesh' : 'open';
+}
+
+/** Vrai si une paroi est vitrée au point (y, z) (sinon grille ou ouverture). Deux moitiés. */
 function glassAt(type, y, z) {
-  if (type === 'back' || type === 'backFar') return z <= COURT.backGlassHeight;
-  if (isSide(type)) {
-    const yy = y > COURT.depth ? COURT.length - y : y;
-    return COURT.sideGlass.some((p) => yy >= p.from && yy <= p.to && z <= p.height);
-  }
-  return true;
+  return wallAt(type, y, z) === 'glass';
 }
 
 /**
@@ -390,6 +407,13 @@ function simulate(init, opts) {
     let stop = false;
     for (const type of hits) {
       const vIn = { vx: s.vx, vy: s.vy, vz: s.vz };
+      if (type !== 'floor' && wallAt(type, s.y, s.z) === 'open') {
+        // Au-dessus du mur ou par une porte : la balle sort du court
+        contacts.push({ type: 'exit', wall: type, t, pos: { x: s.x, y: s.y, z: s.z }, vIn, vOut: vIn });
+        endReason = 'exit';
+        stop = true;
+        break;
+      }
       s = reflect(s, type, P);
       contacts.push({
         type,
@@ -507,6 +531,14 @@ function simulateFull(init, opts) {
     // Toutes les surfaces touchées au même instant (coin) sont traitées dans l'ordre.
     for (const type of SURFACES_FULL) {
       if (!(times[type] <= tau + EPS)) continue;
+      if (type !== 'floor' && wallAt(type, s.y, s.z) === 'open') {
+        // Au-dessus du mur ou par une porte : la balle sort du court
+        const v = { vx: s.vx, vy: s.vy, vz: s.vz };
+        contacts.push({ type: 'exit', wall: type, t, pos: { x: s.x, y: s.y, z: s.z }, vIn: v, vOut: v, side: s.y < COURT.depth ? 0 : 1 });
+        endReason = 'exit';
+        stop = true;
+        break;
+      }
       push(type);
       changed = true;
       if (type === 'floor') {
@@ -897,6 +929,7 @@ const Physics = {
   speed,
   hSpeed,
   onGlass,
+  wallAt,
   isSide,
 };
 

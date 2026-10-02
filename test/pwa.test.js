@@ -22,7 +22,7 @@ test('service worker : il liste exactement les fichiers du jeu (mise à jour pos
     .filter((f) => f.endsWith('.js'))
     .map((f) => './' + path.relative(ROOT, f).split(path.sep).join('/'));
   for (const f of modules) assert(listed.includes(f), 'module du jeu absent de la liste : ' + f);
-  for (const f of ['./', './index.html', './style.css', './manifest.webmanifest']) assert(listed.includes(f), 'absent de la liste : ' + f);
+  for (const f of ['./', './index.html', './simulateur.html', './style.css', './manifest.webmanifest']) assert(listed.includes(f), 'absent de la liste : ' + f);
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
   for (const icon of manifest.icons || []) assert(listed.includes('./' + icon.src.replace(/^\.\//, '')), 'icône absente de la liste : ' + icon.src);
   assert(new Set(listed).size === listed.length, 'fichier listé deux fois');

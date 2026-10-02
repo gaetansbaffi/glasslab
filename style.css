@@ -86,6 +86,7 @@ button { font: inherit; color: inherit; }
   min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; border-radius: 14px;
   background: rgba(12, 20, 28, 0.6); cursor: pointer; pointer-events: auto;
 }
+a.icon-btn { text-decoration: none; color: inherit; }
 .icon-btn svg { width: 24px; height: 24px; fill: #fff; }
 .pause-btn { position: absolute; top: calc(10px + var(--safe-t)); right: calc(10px + var(--safe-r)); }
 
